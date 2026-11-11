@@ -434,8 +434,8 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   <div class="f"><label for="sEntry">進場方式</label>
     <select id="sEntry"><option value="oscTurn">OSC 跌深為負，向上收斂第 K 天</option></select></div>
   <div class="row2">
-    <div class="f"><label for="sDepth">低點深度（%）</label><input type="number" id="sDepth" value="1" step="0.1" min="0"></div>
-    <div class="f"><label for="sConv">收斂天數 K</label><input type="number" id="sConv" value="2" step="1" min="1" max="10"></div>
+    <div class="f"><label for="sDepth">低點深度（%）</label><input type="number" id="sDepth" value="" placeholder="請自己設定" step="0.1" min="0"></div>
+    <div class="f"><label for="sConv">收斂天數 K</label><input type="number" id="sConv" value="" placeholder="請自己設定" step="1" min="1" max="10"></div>
   </div>
   <p class="hint" id="sEntryHint"></p>
   </div>
@@ -443,10 +443,10 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   <div class="sec">
   <h2>出場條件</h2>
   <div class="row2">
-    <div class="f"><label for="sSl">停損（%，0 = 不設）</label><input type="number" id="sSl" value="8" step="0.5" min="0"></div>
-    <div class="f"><label for="sTp">停利（%，0 = 不設）</label><input type="number" id="sTp" value="15" step="0.5" min="0"></div>
+    <div class="f"><label for="sSl">停損（%，填 0 = 不設）</label><input type="number" id="sSl" value="" placeholder="請自己設定" step="0.5" min="0"></div>
+    <div class="f"><label for="sTp">停利（%，填 0 = 不設）</label><input type="number" id="sTp" value="" placeholder="請自己設定" step="0.5" min="0"></div>
   </div>
-  <div class="f"><label for="sMaxDays">最長持有交易日（0 = 不限）</label><input type="number" id="sMaxDays" value="0" step="5" min="0"></div>
+  <div class="f"><label for="sMaxDays">最長持有交易日（填 0 = 不限）</label><input type="number" id="sMaxDays" value="" placeholder="請自己設定" step="5" min="0"></div>
   <p class="hint" id="sExitHint"></p>
   <p class="warn" id="sNoExit" hidden>停損、停利、持有天數都沒設，進場後會一直抱到結束日。</p>
   </div>
@@ -470,8 +470,8 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
 
   <div class="card" id="sScanCard" hidden>
-    <div class="head"><h3>今日進場訊號</h3><span class="hint" id="sScanAsof"></span></div>
-    <p class="cap">用左邊的「進場條件」掃描全部上市櫃股票，列出最新交易日收盤觸發進場訊號的個股。「回測勝率」是用左邊的期間、進場和出場條件回測這檔股票，已出場的交易中賺錢的比例（括號內是交易次數，次數太少參考價值低）。</p>
+    <div class="head"><h3>條件篩選結果</h3><span class="hint" id="sScanAsof"></span></div>
+    <p class="cap">用你在左邊<b>自己設定</b>的條件篩選全部上市櫃股票，列出最新交易日收盤符合條件的個股。這只是條件篩選的結果，不是推薦，也不代表應該買進。「回測勝率」是用左邊的期間、進場和出場條件回測這檔股票，已出場的交易中賺錢的比例（括號內是交易次數，次數太少參考價值低）。</p>
     <div class="sbar">
       <input type="hidden" id="sScanMkt" value=""><input type="hidden" id="sScanSort" value="osc">
       <div class="seg2" role="group" aria-label="市場" data-for="sScanMkt">
@@ -557,14 +557,14 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
   <div class="card" id="mSmart">
     <div class="head"><h3>智慧單</h3><span class="hint" id="mSmartAsof"></span></div>
-    <p class="cap">在「個股」分頁的「今日進場訊號」按「加入智慧單」的股票會列在這裡，記錄加入當時的訊號和價格，並和最新收盤價比較。</p>
+    <p class="cap">在「個股」分頁的「條件篩選結果」按「加入智慧單」的股票會列在這裡，記錄加入當時的訊號和價格，並和最新收盤價比較。</p>
     <div class="tw tscroll"><table id="mSmartT"><thead><tr>
       <th class="l">股票</th><th class="c">加入日期</th><th class="c">訊號日</th><th>當時收盤</th><th>OSC 低點</th><th>當時勝率</th><th>最新收盤</th><th>漲跌</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
   <div class="card" id="mMon" hidden>
     <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
-    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:25 盯盤（下單工具要開著）。預設值依個股分頁的停損／停利 %。</p>
+    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:25 盯盤（下單工具要開著）。價格請自己填，網站不會預先帶入。</p>
     <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
       <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><input type="number" id="monEntry" step="0.01" min="0"></div>
@@ -606,7 +606,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 <footer class="in disc" id="disclaimer">
   <p><b>免責聲明</b></p>
   <p>本網站是個人研究用途的回測與紀錄工具，<b>不是證券投資顧問</b>，不提供任何個股推薦或投資建議，也不代為操作任何人的帳戶，且不收取任何費用。</p>
-  <p>網站上的回測結果、進場訊號、勝率，都是用歷史資料依程式條件計算出來的，<b>不代表未來績效</b>。資料來自 yfinance 等公開來源，可能有延遲、錯誤或缺漏，請以證交所、櫃買中心與券商公告為準。</p>
+  <p>網站上的回測結果、條件篩選結果、勝率，都是用歷史資料依程式條件計算出來的，<b>不代表未來績效</b>。資料來自 yfinance 等公開來源，可能有延遲、錯誤或缺漏，請以證交所、櫃買中心與券商公告為準。</p>
   <p>投資一定有風險，可能損失本金。任何買賣決定（包含使用下單工具自動下單）都由使用者自行判斷，盈虧由使用者自行承擔。</p>
 </footer>
 
@@ -1059,10 +1059,14 @@ function sCfg() {
   return { tk: sTk, start: $('sStart').value, end: $('sEnd').value, capital: Math.max(1000, +$('sCap').value || 0), unit: $('sUnit').value,
     entry: $('sEntry').value, depth: Math.max(0, +$('sDepth').value || 0), conv: Math.min(10, Math.max(1, Math.round(+$('sConv').value || 2))),
     sl: Math.max(0, +$('sSl').value || 0), tp: Math.max(0, +$('sTp').value || 0), maxDays: Math.max(0, Math.round(+$('sMaxDays').value || 0)),
-    fill: $('sFill').value };
+    fill: $('sFill').value, missing: (S_NEED || []).filter(([id]) => String($(id).value).trim() === '').map(([, n]) => n) };
 }
+// 選股與回測條件沒有預設值：使用者自己填完才會跑回測、篩選股票
+var S_NEED = [['sDepth', '低點深度'], ['sConv', '收斂天數 K'], ['sSl', '停損'], ['sTp', '停利'], ['sMaxDays', '最長持有交易日']];
+var sNeedMsg = c => `請先在左邊自己設定：${c.missing.join('、')}（不想設停損／停利／持有天數就填 0）。設定完才會跑回測、篩選股票。`;
 
 function sHints(c) {
+  if (c.missing.length) { $('sEntryHint').textContent = sNeedMsg(c); $('sExitHint').textContent = ''; $('sNoExit').hidden = true; return; }
   $('sEntryHint').textContent = `OSC 低點小於等於股價的 −${c.depth}%，之後連續 ${c.conv} 天往上收斂且仍為負值，第 ${c.conv} 天${c.fill === 'close' ? '收盤' : '的隔天開盤'}進場。`;
   const parts = [];
   if (c.sl) parts.push(`收盤比進場價跌 ${c.sl}% 停損`);
@@ -1073,7 +1077,7 @@ function sHints(c) {
 }
 
 
-// ── 今日進場訊號：掃描 data/scan.json（每檔最近 15 天的收盤與 OSC）──
+// ── 條件篩選結果（原「今日進場訊號」）：掃描 data/scan.json（每檔最近 15 天的收盤與 OSC）──
 let S_SCAN = null, S_SCAN_P = null;
 function sLoadScan() {
   if (!S_REMOTE) return Promise.resolve(null);
@@ -1087,6 +1091,10 @@ function sScanRender() {
   if (!S_REMOTE) return;
   const tb = $('sScanT').tBodies[0];
   if (!S_SCAN) { $('sScanCount').textContent = '載入中…'; tb.innerHTML = ''; return; }
+  if (sCfg().missing.length) {
+    $('sScanCount').textContent = '條件還沒設定'; $('sScanAsof').textContent = S_SCAN ? `資料日期 ${S_SCAN.asof}` : '';
+    tb.innerHTML = `<tr><td class="l" colspan="8">${sNeedMsg(sCfg())}</td></tr>`; sScanLast = []; return;
+  }
   const c0 = sCfg(), c = { ...c0, start: c0.start || '2020-01-02', end: c0.end || '9999-12-31' }, mkt = $('sScanMkt').value, noEtf = $('sScanEtf').checked, minP = +$('sScanMin').value || 0;
   const out = [];
   for (const [code, rows] of Object.entries(S_SCAN.rows)) {
@@ -1124,7 +1132,7 @@ function sScanRender() {
       : w.w == null ? `<span class="hint">—（0 次）</span>`
       : `<span class="${w.w >= 0.5 ? 'up' : 'down'}">${Math.round(w.w * 100)}%</span> <span class="hint">（${w.n} 次）</span>`;
     return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="c n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td class="n">${wcell}</td><td class="acts">${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}${memberOk() ? (smartHas(r.code) ? '<span class="hint">已在智慧單</span>' : `<button type="button" class="linkbtn smartbtn" data-smart="${r.code}">加入智慧單</button>`) : ''}</td></tr>`;
-  }).join('') || `<tr><td class="l" colspan="8">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
+  }).join('') || `<tr><td class="l" colspan="8">最新交易日沒有個股符合你設定的條件。</td></tr>`;
   sScanLast = out;
   sScanQueue(pending);
 }
@@ -1191,11 +1199,11 @@ function sSetTicker(tk) {
 function sRender() {
   const c = sCfg(); sHints(c);
   sScanRender();
-  const none = !sTk;
-  $('sEmpty').hidden = !none;
+  const none = !sTk || c.missing.length > 0;
+  $('sEmpty').hidden = !!sTk;
   $('sKpis').hidden = none;
   document.querySelectorAll('#sMain > .card:not(#sScanCard)').forEach(el => el.hidden = none);
-  if (none) { $('sH1').textContent = '自選股'; $('sMeta').textContent = '還沒有股票，請在下方輸入代號。'; $('sPnl').textContent = '—'; $('sPnl').className = 'v'; $('sPnlS').textContent = ''; $('sRange').textContent = ''; return; }
+  if (none) { $('sH1').textContent = sTk ? `${sTk} ${sName(sTk)}` : '自選股'; $('sMeta').textContent = sTk ? sNeedMsg(c) : '還沒有股票，請在下方輸入代號。'; $('sPnl').textContent = '—'; $('sPnl').className = 'v'; $('sPnlS').textContent = ''; $('sRange').textContent = ''; return; }
   sCompare(c);
   sR = sRun(sTk, c); if (!sR) return;
   const R2 = sR, L = sLoad(sTk), lf = R2.last.f;
@@ -1849,7 +1857,7 @@ if (ALL._remote) {
   });
 }
 
-// ── 智慧單：登入的人在「今日進場訊號」加入，顯示在會員專區；存在帳號設定的 smart 欄位 ──
+// ── 智慧單：登入的人在「條件篩選結果」加入，顯示在會員專區；存在帳號設定的 smart 欄位 ──
 function smartList() { return Array.isArray(ACC.smart) ? ACC.smart : []; }
 function smartHas(code) { return smartList().some(x => x.code === code); }
 async function smartAdd(code) {
@@ -1882,7 +1890,7 @@ function smartRender() {
   tb.innerHTML = list.map(x => {
     const L = smartLatest(x.code), chg = L ? L.c / x.price - 1 : null;
     return `<tr><td class="l"><b>${x.code}</b> ${x.name || ''}</td><td class="c n">${x.added}</td><td class="c n">${x.sig || '—'}</td><td class="n">${x.price.toFixed(2)}</td><td class="n down">${x.lowp != null ? x.lowp.toFixed(2) + '%' : '—'}</td><td class="n">${x.win != null ? x.win + '%<span class="hint">（' + x.n + ' 次）</span>' : '—'}</td><td class="n">${L ? L.c.toFixed(2) : '—'}</td><td class="n ${chg == null ? '' : cls(chg)}">${chg == null ? '—' : pct(chg)}</td><td class="acts">${ordCell(x.code)}<button type="button" class="linkbtn" data-unsmart="${x.code}">移除</button></td></tr>`;
-  }).join('') || '<tr><td class="l" colspan="9">還沒有智慧單。到「個股」分頁的「今日進場訊號」，在想追蹤的股票按「加入智慧單」。</td></tr>';
+  }).join('') || '<tr><td class="l" colspan="9">還沒有智慧單。到「個股」分頁的「條件篩選結果」，在想追蹤的股票按「加入智慧單」。</td></tr>';
 }
 $('mSmartT').addEventListener('click', e => {
   const r = e.target.closest('[data-unsmart]'); if (r) smartRemove(r.dataset.unsmart);
@@ -1895,12 +1903,10 @@ let monCode = '';
 function monOpen(code) {
   const x = smartList().find(s => s.code === code); if (!x || !ordReady()) return;
   monCode = code;
-  const p = +x.price, sl = +($('sSl') && $('sSl').value) || 8, tp = +($('sTp') && $('sTp').value) || 15;
+  // 價格不預先填：進場、停利、停損都由使用者自己決定
   $('monName').textContent = `${code} ${x.name || ''}`;
   $('monQty').value = 1;
-  $('monEntry').value = p.toFixed(2);
-  $('monTp').value = (p * (1 + tp / 100)).toFixed(2);
-  $('monSl').value = (p * (1 - sl / 100)).toFixed(2);
+  ['monEntry', 'monTp', 'monSl'].forEach(id => { $(id).value = ''; $(id).placeholder = '請自己填'; });
   $('monUntil').value = new Date(Date.now() + 28800000 + 30 * 86400000).toISOString().slice(0, 10);
   $('monExp').value = 'sell'; $('monAck').checked = false; $('monMsg').textContent = '';
   $('mMon').hidden = false; $('mMon').scrollIntoView({ behavior: 'smooth', block: 'center' });
