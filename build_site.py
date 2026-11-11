@@ -162,6 +162,26 @@ def main():
         with open(os.path.join(OUT, "data", g + ".json"), "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
     index = {c: [d["name"], d["market"]] for c, d in sorted(data.items())}
+
+    # 掃描用小檔：每檔最近 15 個交易日的 [日期, 收盤, OSC]（OSC 用完整歷史計算，和網頁一樣是 12/26/9）
+    scan = {}
+    for c, d in data.items():
+        e12 = e26 = sig = None
+        rows = []
+        for day, _o, cl in d["px"]:
+            if e12 is None:
+                e12 = e26 = cl
+                sig = 0.0
+            else:
+                e12 += 2 / 13 * (cl - e12)
+                e26 += 2 / 27 * (cl - e26)
+            dif = e12 - e26
+            sig = dif if len(rows) == 0 and sig == 0.0 and day == d["px"][0][0] else sig + 2 / 10 * (dif - sig)
+            rows.append([day, cl, round(dif - sig, 5)])
+        scan[c] = rows[-15:]
+    asof_scan = max(r[-1][0] for r in scan.values())
+    with open(os.path.join(OUT, "data", "scan.json"), "w", encoding="utf-8") as f:
+        json.dump({"asof": asof_scan, "rows": scan}, f, separators=(",", ":"))
     with open(os.path.join(OUT, "data", "index.json"), "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
 

@@ -135,6 +135,8 @@ td b{font-family:var(--f-num);font-weight:600}
 .p-add{background:var(--up-soft);color:var(--up)}
 .p-sell{background:var(--down-soft);color:var(--down)}
 .p-div{background:var(--div-soft);color:var(--div)}
+.p-today{background:var(--div-soft);color:var(--div);border:1px solid var(--div)}
+tr.hot td{background:var(--div-soft)}
 .p-split{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
 tr.cur td{background:var(--accent-soft)!important}
 tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
@@ -405,6 +407,20 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <div class="kpi"><div class="l">策略最大回撤</div><div class="v" id="sK3">—</div><div class="s" id="sK3s"></div></div>
     <div class="kpi"><div class="l">同期買進持有</div><div class="v" id="sK4">—</div><div class="s" id="sK4s"></div></div>
     <div class="kpi"><div class="l">目前狀態</div><div class="v" id="sK5">—</div><div class="s" id="sK5s"></div></div>
+  </div>
+
+  <div class="card" id="sScanCard" hidden>
+    <div class="head"><h3>今日進場訊號</h3><span class="hint" id="sScanAsof"></span></div>
+    <p class="cap">用左邊的「進場條件」掃描全部上市櫃股票，列出最新交易日收盤觸發進場訊號的個股。這裡只看訊號，不考慮是否已經持有；要看完整回測，加入自選股即可。</p>
+    <div class="filters">
+      <select id="sScanMkt" aria-label="市場"><option value="">上市＋上櫃</option><option value="上市">只看上市</option><option value="上櫃">只看上櫃</option></select>
+      <label class="hint"><input type="checkbox" id="sScanEtf" checked> 排除 ETF</label>
+      <label class="hint">收盤價至少 <input type="number" id="sScanMin" value="10" min="0" step="5" style="width:72px"> 元</label>
+      <span class="hint" id="sScanCount"></span>
+    </div>
+    <div class="tw tscroll"><table id="sScanT"><thead><tr>
+      <th class="l">股票</th><th class="l">市場</th><th>收盤</th><th>OSC 低點</th><th>低點日期</th><th>目前 OSC</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
   </div>
 
   <div class="card">
@@ -816,7 +832,7 @@ function sRun(tk, cfg) {
   if (s < 0 || e < s) return null;
   const baseUnit = cfg.unit === 'lot' ? 1000 : 1, minFee = cfg.unit === 'lot' ? 20 : 1;
   const fee = a => Math.max(minFee, Math.floor(a * S_FEE));
-  let cash = cfg.capital, shares = 0, pos = null, pending = null, prevSh = 0, divT = 0, feeT = 0, taxT = 0, inDays = 0;
+  let sig = null, cash = cfg.capital, shares = 0, pos = null, pending = null, prevSh = 0, divT = 0, feeT = 0, taxT = 0, inDays = 0;
   const trades = [], ser = [], marks = [];
 
   function buy(i, price, why) {
@@ -860,6 +876,7 @@ function sRun(tk, cfg) {
     if (act) {
       if (cfg.fill === 'close') { act.a === 'buy' ? buy(i, p.c, act.why) : sell(i, p.c, act.why); }
       else if (i < e) pending = act;
+      else sig = { ...act, d: p.d };   // 最新交易日的訊號：隔日開盤才會成交
     }
     if (shares) inDays++;
     prevSh = shares;
@@ -878,7 +895,7 @@ function sRun(tk, cfg) {
   }
   const mdd = a => { let pk = -Infinity, m = 0; a.forEach(v => { pk = Math.max(pk, v); m = Math.min(m, v / pk - 1); }); return m; };
   const wins = trades.filter(t => t.pnl > 0).length;
-  return { s, e, px, ser, trades, marks, open: pos, shares, cash, total, pnl: total - cfg.capital, ret: total / cfg.capital - 1,
+  return { s, e, px, ser, trades, marks, open: pos, sig, shares, cash, total, pnl: total - cfg.capital, ret: total / cfg.capital - 1,
     divT, feeT, taxT, wins, winRate: trades.length ? wins / trades.length : null,
     avgRet: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length : null,
     avgDays: trades.length ? trades.reduce((a, t) => a + t.days, 0) / trades.length : null,
@@ -911,6 +928,56 @@ function sHints(c) {
   $('sNoExit').hidden = parts.length > 0;
 }
 
+
+// ── 今日進場訊號：掃描 data/scan.json（每檔最近 15 天的收盤與 OSC）──
+let S_SCAN = null, S_SCAN_P = null;
+function sLoadScan() {
+  if (!S_REMOTE) return Promise.resolve(null);
+  if (!S_SCAN_P) S_SCAN_P = fetch('data/scan.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(j => { S_SCAN = j; sScanRender(); return j; });
+  return S_SCAN_P;
+}
+function sScanRender() {
+  const card = $('sScanCard'); if (!card) return;
+  card.hidden = !S_REMOTE;
+  if (!S_REMOTE) return;
+  const tb = $('sScanT').tBodies[0];
+  if (!S_SCAN) { $('sScanCount').textContent = '載入中…'; tb.innerHTML = ''; return; }
+  const c = sCfg(), mkt = $('sScanMkt').value, noEtf = $('sScanEtf').checked, minP = +$('sScanMin').value || 0;
+  const out = [];
+  for (const [code, rows] of Object.entries(S_SCAN.rows)) {
+    if (!rows.length || rows[rows.length - 1][0] !== S_SCAN.asof) continue;   // 最新交易日沒交易的不算
+    if (noEtf && code.startsWith('00')) continue;
+    const info = (S_INDEX && S_INDEX[code]) || ['', ''];
+    if (mkt && info[1] !== mkt) continue;
+    const last = rows.length - 1;
+    if (rows[last][1] < minP) continue;
+    const px = rows.map(r => ({ osc: r[2], oscp: r[2] / r[1] * 100 }));
+    if (!sEntrySignal(px, last, c)) continue;
+    const low = rows[last - c.conv];
+    out.push({ code, name: info[0], mkt: info[1], close: rows[last][1], lowp: low[2] / low[1] * 100, lowd: low[0], nowp: px[last].oscp });
+  }
+  out.sort((a, b) => a.lowp - b.lowp);
+  $('sScanAsof').textContent = `資料日期 ${S_SCAN.asof}`;
+  $('sScanCount').textContent = `符合條件 ${out.length} 檔`;
+  tb.innerHTML = out.map(r => {
+    const inW = sWatch.includes(r.code);
+    return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="l n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td>${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}</td></tr>`;
+  }).join('') || `<tr><td class="l" colspan="7">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
+}
+async function sScanAdd(code) {
+  const st = $('sWStatus');
+  if (sWatch.includes(code)) return;
+  if (sWatch.length >= 10) { st.dataset.msg = 1; st.textContent = '自選股已經 10 檔，請先清掉一欄再加入。'; return; }
+  sWatch = sWatch.concat(code);
+  sFillInputs();
+  try { await accWrite(); } catch (e) {}
+  sApplyWatch(sWatch);
+  sTk = code; sBuildChips(); sSetTicker(code);
+  sEnsure([code]).then(() => { sBuildChips(); sSetTicker(code); sRender(); });
+  sScanRender();
+}
+
 function sSetTicker(tk) {
   sTk = tk;
   const L = sLoad(tk), lastD = L.px[L.px.length - 1].d;
@@ -926,10 +993,11 @@ function sSetTicker(tk) {
 
 function sRender() {
   const c = sCfg(); sHints(c);
+  sScanRender();
   const none = !sTk;
   $('sEmpty').hidden = !none;
   $('sKpis').hidden = none;
-  document.querySelectorAll('#sMain > .card').forEach(el => el.hidden = none);
+  document.querySelectorAll('#sMain > .card:not(#sScanCard)').forEach(el => el.hidden = none);
   if (none) { $('sH1').textContent = '自選股'; $('sMeta').textContent = '還沒有股票，請在下方輸入代號。'; $('sPnl').textContent = '—'; $('sPnl').className = 'v'; $('sPnlS').textContent = ''; $('sRange').textContent = ''; return; }
   sCompare(c);
   sR = sRun(sTk, c); if (!sR) return;
@@ -946,9 +1014,13 @@ function sRender() {
   $('sK3').textContent = pct(R2.mdd); $('sK3s').textContent = `在場時間 ${Math.round(R2.exposure * 100)}%`;
   $('sK4').textContent = pct(R2.bhRet); $('sK4').className = 'v ' + cls(R2.bhRet);
   $('sK4s').textContent = `最大回撤 ${pct(R2.bhMdd)}`;
-  if (R2.open) {
+  if (R2.sig) {
+    const buy = R2.sig.a === 'buy';
+    $('sK5').textContent = buy ? '明日開盤進場' : '明日開盤出場'; $('sK5').className = 'v ' + (buy ? 'up' : 'down');
+    $('sK5s').textContent = `${R2.sig.d} 收盤觸發・${R2.sig.why}`;
+  } else if (R2.open) {
     const o = R2.open, f = R2.px[o.i].f, ur = R2.last.c / o.price - 1;
-    $('sK5').textContent = '持有中'; $('sK5').className = 'v up';
+    $('sK5').textContent = o.d === R2.last.d ? '今日進場' : '持有中'; $('sK5').className = 'v up';
     $('sK5s').textContent = `${o.d} 買 ${(o.price * f).toFixed(2)}・帳面 ${pct(ur)}`;
   } else {
     $('sK5').textContent = '空手'; $('sK5').className = 'v';
@@ -1065,12 +1137,18 @@ function sDrawTx() {
   const R2 = sR, rows = R2.trades.map(t => {
     const f = R2.px[t.i].f, xf = R2.px[t.xi].f;
     const why = t.why === '停利' ? 'p-add' : t.why === '停損' ? 'p-sell' : 'p-split';
-    return `<tr><td class="l n">${t.d}</td><td class="n">${(t.price * f).toFixed(2)}</td><td class="l n">${t.xd}</td><td class="n">${(t.xprice * xf).toFixed(2)}</td><td class="l"><span class="pill ${why}">${t.why}</span></td><td class="n">${nf.format(Math.round(t.n / f))}</td><td class="n">${t.days}</td><td class="n ${cls(t.pnl)}">${sMoney(t.pnl)}</td><td class="n ${cls(t.ret)}">${pct(t.ret)}</td><td class="n ${cls(t.retDiv)}">${pct(t.retDiv)}</td></tr>`;
+    const today = t.xd === R2.last.d ? ' <span class="pill p-today">今日出場</span>' : '';
+    return `<tr${today ? ' class="hot"' : ''}><td class="l n">${t.d}</td><td class="n">${(t.price * f).toFixed(2)}</td><td class="l n">${t.xd}</td><td class="n">${(t.xprice * xf).toFixed(2)}</td><td class="l"><span class="pill ${why}">${t.why}</span>${today}</td><td class="n">${nf.format(Math.round(t.n / f))}</td><td class="n">${t.days}</td><td class="n ${cls(t.pnl)}">${sMoney(t.pnl)}</td><td class="n ${cls(t.ret)}">${pct(t.ret)}</td><td class="n ${cls(t.retDiv)}">${pct(t.retDiv)}</td></tr>`;
   });
   if (R2.open) { const o = R2.open, f = R2.px[o.i].f, ur = R2.last.c / o.price - 1, mv = o.n * R2.last.c;
-    rows.push(`<tr><td class="l n">${o.d}</td><td class="n">${(o.price * f).toFixed(2)}</td><td class="l">—</td><td class="n">${(R2.last.c * R2.last.f).toFixed(2)}</td><td class="l"><span class="pill p-init">持有中</span></td><td class="n">${nf.format(Math.round(o.n / R2.last.f))}</td><td class="n">${R2.e - o.i}</td><td class="n ${cls(mv - o.cost)}">${sMoney(mv - o.cost)}</td><td class="n ${cls(ur)}">${pct(ur)}</td><td class="n">—</td></tr>`); }
+    const today = o.d === R2.last.d;
+    rows.push(`<tr${today ? ' class="hot"' : ''}><td class="l n">${o.d}</td><td class="n">${(o.price * f).toFixed(2)}</td><td class="l">—</td><td class="n">${(R2.last.c * R2.last.f).toFixed(2)}</td><td class="l"><span class="pill p-init">持有中</span>${today ? ' <span class="pill p-today">今日進場</span>' : ''}</td><td class="n">${nf.format(Math.round(o.n / R2.last.f))}</td><td class="n">${R2.e - o.i}</td><td class="n ${cls(mv - o.cost)}">${sMoney(mv - o.cost)}</td><td class="n ${cls(ur)}">${pct(ur)}</td><td class="n">—</td></tr>`); }
+  if (R2.sig) {
+    const g = R2.sig, buy = g.a === 'buy', lf = R2.last.f;
+    rows.push(`<tr class="hot"><td class="l n">${buy ? g.d + '（訊號）' : '—'}</td><td class="n">${buy ? '明日開盤' : '—'}</td><td class="l n">${buy ? '—' : g.d + '（訊號）'}</td><td class="n">${buy ? '—' : '明日開盤'}</td><td class="l"><span class="pill p-today">${buy ? '明日開盤進場' : '明日開盤出場'}</span> ${buy ? '' : g.why}</td><td class="n" colspan="5" style="text-align:left">${buy ? g.why : ''}　最新收盤 ${(R2.last.c * lf).toFixed(2)}</td></tr>`);
+  }
   $('sTx').tBodies[0].innerHTML = rows.join('') || '<tr><td class="l" colspan="10">這段期間沒有符合條件的進場訊號，可以把低點深度調小試試。</td></tr>';
-  $('sTxCap').textContent = `報酬已扣手續費和證交稅；「含息報酬」再加上持有期間領到的現金股息。${R2.open ? '最後一列是還沒出場的部位，以最後一天收盤價計算。' : ''}`;
+  $('sTxCap').textContent = `報酬已扣手續費和證交稅；「含息報酬」再加上持有期間領到的現金股息。${R2.open ? '「持有中」是還沒出場的部位，以最後一天收盤價計算。' : ''}${R2.sig ? `最新交易日 ${R2.sig.d} 收盤觸發訊號，成交方式是隔日開盤，所以列在最後一列等待成交。` : ''}`;
 }
 
 
@@ -1311,7 +1389,9 @@ function sInit() {
   sRender();
   if (S_REMOTE) {
     $('sWHint').textContent = '每個人的清單和設定都記在自己這台裝置的瀏覽器。輸入任何上市櫃股票或 ETF 代號（空白的欄位不用填），按儲存後就會自動下載資料。';
-    sLoadIndex().then(() => { sApplyWatch(sWatch); sWatchUi(); });
+    sLoadIndex().then(() => { sApplyWatch(sWatch); sWatchUi(); sLoadScan(); });
+    ['sScanMkt', 'sScanEtf', 'sScanMin'].forEach(id => $(id).addEventListener('input', sScanRender));
+    $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanAdd(b.dataset.add); });
   }
   sDbInit();
 }
