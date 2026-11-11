@@ -572,6 +572,19 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <span class="hint" id="monMsg" aria-live="polite"></span>
     </div>
   </div>
+  <div class="card" id="mPnl" hidden>
+    <div class="head"><h3>損益統計</h3><span class="hint" id="pnlNote">監控單買賣都完成才計入；已扣手續費與證交稅</span></div>
+    <div class="zbar" id="pnlSeg" role="group" aria-label="統計期間">
+      <button type="button" class="on" data-p="week">每週</button><button type="button" data-p="month">每月</button><button type="button" data-p="custom">自訂</button>
+    </div>
+    <div id="pnlRange" hidden style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:0 0 12px">
+      <div class="f" style="width:170px"><label for="pnlFrom">開始日期</label><input type="date" id="pnlFrom"></div>
+      <div class="f" style="width:170px"><label for="pnlTo">結束日期</label><input type="date" id="pnlTo"></div>
+      <div class="zbar" id="pnlQuick" style="margin:0"><button type="button" data-q="7">近 7 天</button><button type="button" data-q="30">近 30 天</button><button type="button" data-q="90">近 3 個月</button><button type="button" data-q="ytd">今年</button><button type="button" data-q="all">全部</button></div>
+    </div>
+    <div class="kpis" id="pnlKpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px"></div>
+    <div class="tw tscroll"><table id="pnlT"><thead></thead><tbody></tbody></table></div>
+  </div>
   <div class="card" id="mOrders" hidden>
     <div class="head"><h3>下單紀錄</h3><span class="hint" id="mOrdersNote"></span></div>
     <p class="cap">在上面的智慧單按「下單」會送出一筆下單意圖：買進 1 張、限價＝訊號日收盤、ROD。網頁不會直接下單，要等你電腦上的「下單工具」檢查保險條件、你按 y 確認後才會送到永豐。還沒處理的單可以在這裡取消。</p>
@@ -894,6 +907,7 @@ function route() {
   $('vMemberHead').hidden = $('vMemberBody').hidden = view !== 'member';
   $('mSmart').hidden = !ok; $('mLock').hidden = ok; $('mOrders').hidden = !ok || !ALL._remote;
   if (!ok || !ALL._remote) $('mMon').hidden = true;
+  $('mPnl').hidden = !ok || !ALL._remote;
   if (view === 'member' && ok && typeof smartRender === 'function') { smartRender(); if (typeof sLoadScan === 'function') sLoadScan().then(smartRender); }
   $('mMeta').textContent = ok ? '這一頁只有登入的人看得到。' : '登入後才看得到這一頁。';
   [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabMember', 'member']].forEach(([id, v]) => {
@@ -1908,7 +1922,7 @@ $('monClose').addEventListener('click', () => { $('mMon').hidden = true; });
 const ORD_ST = { pending: '待處理', confirmed: '已確認，送單中', submitted: '已送出', rejected: '已拒絕', cancelled: '已取消', expired: '已過期', error: '錯誤',
   watching: '監控中・等進場', buying: '買進中', holding: '持有・監控出場', selling: '賣出中', closed: '已出場' };
 const ORD_LIVE = ['pending', 'confirmed', 'watching', 'buying', 'holding', 'selling'];
-let ORDERS = [], ordUnsub = null, ordErr = '';
+let ORDERS = [], ordUnsub = null, ordErr = '', CLOSED = [], pnlUnsub = null, pnlMode = 'week';
 function ordReady() { return !!(ALL._remote && FB && ACC.fbUser && ACC.mode === 'fb'); }
 function ordActive(code) { return ORDERS.find(o => o.code === code && ORD_LIVE.includes(o.status)); }
 function ordCell(code) {
@@ -1919,9 +1933,15 @@ function ordCell(code) {
 }
 function ordWatch(u) {
   if (ordUnsub) { ordUnsub(); ordUnsub = null; }
-  ORDERS = []; ordErr = '';
-  if (!u || !FB) { ordRender(); return; }
+  if (pnlUnsub) { pnlUnsub(); pnlUnsub = null; }
+  ORDERS = []; CLOSED = []; ordErr = '';
+  if (!u || !FB) { ordRender(); pnlRender(); return; }
   const F = FB.F, q = F.query(F.collection(FB.db, 'users', u.uid, 'orders'), F.orderBy('createdAt', 'desc'), F.limit(30));
+  // 損益統計要看全部已出場的單（不受最近 30 筆限制）
+  pnlUnsub = F.onSnapshot(F.query(F.collection(FB.db, 'users', u.uid, 'orders'), F.where('status', '==', 'closed')), s => {
+    CLOSED = s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+    pnlRender();
+  }, () => {});
   ordUnsub = F.onSnapshot(q, s => {
     ORDERS = s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
     ordErr = ''; ordRender(); smartRender();
@@ -1991,6 +2011,80 @@ function ordRender() {
   $('mOrdersNote').innerHTML = ordErr ? esc(ordErr)
     : n ? `已實現損益合計 <b class="${cls(sum)}">${money(sum)}</b>（${n} 筆，已扣手續費與證交稅）` : '';
 }
+// ── 損益統計：每週／每月／自訂期間（已出場的監控單） ──
+const twDay = t => new Date(t.getTime() + 28800000).toISOString().slice(0, 10);   // 台灣日期 YYYY-MM-DD
+const dayAdd = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const weekStart = s => { const d = new Date(s + 'T00:00:00Z'); return dayAdd(s, -((d.getUTCDay() + 6) % 7)); };   // 週一
+function pnlTrades() {
+  return CLOSED.map(o => {
+    const t = (o.soldAt && o.soldAt.toDate && o.soldAt.toDate()) || (o.updatedAt && o.updatedAt.toDate && o.updatedAt.toDate())
+      || (o.createdAt && o.createdAt.toDate && o.createdAt.toDate());
+    const P = o.type === 'monitor' ? ordPnl(o) : null;
+    return t && P && P.done ? { o, day: twDay(t), P } : null;
+  }).filter(Boolean).sort((a, b) => b.day.localeCompare(a.day));
+}
+function pnlAgg(list) {
+  const n = list.length, sum = list.reduce((a, x) => a + x.P.net, 0), win = list.filter(x => x.P.net > 0).length;
+  return { n, sum, win, lose: list.filter(x => x.P.net < 0).length, wr: n ? win / n : null, avg: n ? list.reduce((a, x) => a + x.P.ret, 0) / n : null };
+}
+function pnlRender() {
+  const tb = $('pnlT') && $('pnlT').tBodies[0]; if (!tb) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const money = v => (v > 0 ? '+' : '') + Math.round(v).toLocaleString('zh-TW');
+  const pc = v => v == null ? '—' : (v > 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+  const all = pnlTrades(), today = twDay(new Date());
+  document.querySelectorAll('#pnlSeg button').forEach(b => b.classList.toggle('on', b.dataset.p === pnlMode));
+  $('pnlRange').hidden = pnlMode !== 'custom';
+  let scope, title, head, rows;
+  if (pnlMode === 'custom') {
+    if (!$('pnlFrom').value) $('pnlFrom').value = today.slice(0, 8) + '01';
+    if (!$('pnlTo').value) $('pnlTo').value = today;
+    let a = $('pnlFrom').value, b = $('pnlTo').value; if (a > b) [a, b] = [b, a];
+    scope = all.filter(x => x.day >= a && x.day <= b);
+    title = `${a.slice(5)} ～ ${b.slice(5)}`;
+    head = '<th class="c">出場日</th><th class="l">股票</th><th>張數</th><th>買進</th><th>賣出</th><th class="c">出場原因</th><th>淨損益</th><th>報酬率</th>';
+    rows = scope.map(x => `<tr><td class="c n">${x.day.slice(5)}</td><td class="l"><b>${esc(x.o.code)}</b> ${esc(x.o.name)}</td><td class="n">${esc(x.o.soldQty || x.o.qty)}</td><td class="n">${(+x.o.buyPrice).toFixed(2)}</td><td class="n">${(+x.o.sellPrice).toFixed(2)}</td><td class="c">${esc(x.o.exitWhy || '—')}</td><td class="n ${cls(x.P.net)}"><b>${money(x.P.net)}</b></td><td class="n ${cls(x.P.ret)}">${pc(x.P.ret)}</td></tr>`);
+  } else {
+    const key = pnlMode === 'week' ? x => weekStart(x.day) : x => x.day.slice(0, 7);
+    const cur = pnlMode === 'week' ? weekStart(today) : today.slice(0, 7);
+    const groups = {};
+    all.forEach(x => { (groups[key(x)] = groups[key(x)] || []).push(x); });
+    scope = groups[cur] || [];
+    title = pnlMode === 'week' ? '本週' : '本月';
+    head = `<th class="l">${pnlMode === 'week' ? '週（週一～週日）' : '月份'}</th><th>筆數</th><th>賺／賠</th><th>勝率</th><th>平均報酬率</th><th>淨損益</th>`;
+    rows = Object.keys(groups).sort().reverse().map(k => {
+      const g = pnlAgg(groups[k]);
+      const label = pnlMode === 'week' ? `${k.slice(5)} ～ ${dayAdd(k, 6).slice(5)}` : `${k.slice(0, 4)} 年 ${+k.slice(5)} 月`;
+      const from = k.length === 7 ? k + '-01' : k, to = k.length === 7 ? dayAdd(dayAdd(k + '-01', 32).slice(0, 8) + '01', -1) : dayAdd(k, 6);
+      return `<tr class="pick" data-from="${from}" data-to="${to}" style="cursor:pointer" title="點一下看這段期間的每一筆"><td class="l">${label}${k === cur ? ' <span class="wpend">' + title + '</span>' : ''}</td><td class="n">${g.n}</td><td class="n"><span class="up">${g.win}</span>／<span class="down">${g.lose}</span></td><td class="n">${pc(g.wr).replace('+', '')}</td><td class="n ${cls(g.avg)}">${pc(g.avg)}</td><td class="n ${cls(g.sum)}"><b>${money(g.sum)}</b></td></tr>`;
+    });
+  }
+  const s = pnlAgg(scope);
+  $('pnlKpis').innerHTML = [
+    [`${title}淨損益`, `<span class="${cls(s.sum)}">${s.n ? money(s.sum) : '—'}</span>`, '元，已扣手續費、證交稅'],
+    ['筆數', s.n, `賺 ${s.win}・賠 ${s.lose}`],
+    ['勝率', s.wr == null ? '—' : (s.wr * 100).toFixed(0) + '%', '淨損益大於 0 的比例'],
+    ['平均報酬率', `<span class="${cls(s.avg)}">${pc(s.avg)}</span>`, '每筆報酬率平均']
+  ].map(([l, v, sub]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${sub}</div></div>`).join('');
+  $('pnlT').tHead.innerHTML = `<tr>${head}</tr>`;
+  const cols = (head.match(/<th/g) || []).length;
+  tb.innerHTML = rows.join('') || `<tr><td class="l" colspan="${cols}">${pnlMode === 'custom' ? '這段期間沒有已出場的監控單。' : '還沒有已出場的監控單。'}</td></tr>`;
+}
+$('pnlSeg').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { pnlMode = b.dataset.p; pnlRender(); } });
+$('pnlFrom').addEventListener('change', pnlRender);
+$('pnlTo').addEventListener('change', pnlRender);
+$('pnlQuick').addEventListener('click', e => {
+  const b = e.target.closest('[data-q]'); if (!b) return;
+  const today = twDay(new Date()), q = b.dataset.q;
+  const first = pnlTrades().map(x => x.day).sort()[0] || today;
+  $('pnlFrom').value = q === 'ytd' ? today.slice(0, 4) + '-01-01' : q === 'all' ? first : dayAdd(today, -(+q) + 1);
+  $('pnlTo').value = today; pnlRender();
+});
+$('pnlT').addEventListener('click', e => {   // 點每週／每月那一列 → 切到自訂看明細
+  const r = e.target.closest('tr.pick'); if (!r) return;
+  $('pnlFrom').value = r.dataset.from; $('pnlTo').value = r.dataset.to; pnlMode = 'custom'; pnlRender();
+});
+
 $('mOrdersT').addEventListener('click', e => { const b = e.target.closest('[data-ocancel]'); if (b) ordCancel(b.dataset.ocancel); });
 
 if (location.hash === '#stocks') route();
