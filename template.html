@@ -1539,6 +1539,7 @@ function sInit() {
 // ── 帳號：用 claude.ai 的登入身分，每個人的自選股與設定存在資料庫 users/<自己的 id> ──
 const ACC = { db: null, user: null, uid: null, name: '', avatar: '', isOwner: false, doc: null, data: null, state: 'loading', readOnly: false, mode: 'local' };
 const LS_KEY = 'etf-backtest-prefs-v1';
+let FB = null;   // Firebase（GitHub 版才會載入）；要在帳號程式開始前宣告
 function lsGet() { try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { return null; } }
 function lsSet(v) { try { localStorage.setItem(LS_KEY, JSON.stringify(v)); return true; } catch (e) { return false; } }
 const ETF_FIELDS = ['init', 'add', 'addRule', 'drop', 'nday', 'maxAdd', 'exitRule', 'tp', 'fill', 'unit'];
@@ -1650,7 +1651,6 @@ const FB_CONFIG = {
   appId: '1:520094225582:web:9b96dd221eb8d00a83093f'
 };
 const FB_V = '10.12.2';
-let FB = null;
 function fbBadge() {
   const el = $('accBadge'); if (!el) return;
   const u = ACC.fbUser;
