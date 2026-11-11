@@ -40,6 +40,14 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
 .acc img{width:20px;height:20px;border-radius:50%}
 .acc b{color:var(--board-ink);font-weight:500}
 .acc .accNote{color:var(--board-muted);opacity:.8}
+.accbtn{font:inherit;font-size:12px;font-weight:500;color:var(--board);background:var(--board-hi);border:0;border-radius:99px;padding:4px 14px;cursor:pointer}
+.accbtn[data-act=logout]{background:transparent;color:var(--board-ink);border:1px solid var(--board-line)}
+.login{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;background:var(--board-chip);border:1px solid var(--board-line);border-radius:10px}
+.login input{width:220px;max-width:100%;background:var(--board);color:var(--board-ink);border:1px solid var(--board-line)}
+.login input:focus-visible{outline:2px solid var(--board-hi);background:var(--board)}
+.login .linkbtn{color:var(--board-ink);border-color:var(--board-line)}
+.lgmsg{font-size:13px;color:var(--board-hi);flex-basis:100%}
+.lgmsg:empty{display:none}
 @media (max-width:520px){.acc .accNote{display:none}}
 .tab{color:var(--board-muted);text-decoration:none;font-size:15px;font-weight:500;padding:6px 16px 10px;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:.06em}
 .tab:hover{color:var(--board-ink)}
@@ -191,6 +199,14 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <a href="#stocks" class="tab" id="tabStocks">個股</a>
       <span class="acc" id="accBadge" aria-live="polite"><span>連線中…</span></span>
     </nav>
+    <form class="login" id="loginBox" hidden autocomplete="on">
+      <input type="email" id="lgEmail" placeholder="Email" autocomplete="username" required aria-label="Email">
+      <input type="password" id="lgPass" placeholder="密碼" autocomplete="current-password" required aria-label="密碼">
+      <button type="submit" class="btn" id="lgGo">登入</button>
+      <button type="button" class="linkbtn" id="lgReset">忘記密碼</button>
+      <button type="button" class="linkbtn" id="lgClose">取消</button>
+      <span class="lgmsg" id="lgMsg" aria-live="polite"></span>
+    </form>
     <div class="vhead" id="vEtfHead">
     <div class="eyebrow"><span class="dot"></span><b>ETF 跌深加碼回測</b><span id="dataRange"></span></div>
     <div class="tks" id="tkBar" role="group" aria-label="選擇標的"></div>
@@ -1533,6 +1549,7 @@ function accApplyStk(pf) {
   if (pf.tk && sList().includes(pf.tk)) sTk = pf.tk;
 }
 function accBadge(note) {
+  if (ALL._remote) { fbBadge(); return; }
   const el = $('accBadge'); if (!el) return;
   const who = ACC.name || '你';
   let html;
@@ -1552,6 +1569,15 @@ async function accWrite(extra) {
   if (ACC.state === 'loading') return false;
   const body = accBody(extra), key = JSON.stringify(body);
   if (key === accLast) return true;
+  if (ACC.mode === 'fb' && ACC.fbRef && FB) {
+    try {
+      await FB.F.setDoc(ACC.fbRef, { ...body, updatedAt: new Date().toISOString() });
+      accLast = key; ACC.data = body; lsSet(body); return true;
+    } catch (e) {
+      if (!(e && e.code === 'permission-denied')) throw e;
+      ACC.fbDenied = true; ACC.mode = 'local'; accBadge();   // 帳號沒開通：改存在瀏覽器
+    }
+  }
   if (ACC.mode === 'db' && ACC.doc) {
     try {
       await ACC.doc.set({ ...body, updatedAt: new Date().toISOString() });
@@ -1606,6 +1632,86 @@ $('cfg').addEventListener('input', accQueueSave);
 $('cfg').addEventListener('change', accQueueSave);
 $('tkBar').addEventListener('click', accQueueSave);
 $('tCmp').addEventListener('click', accQueueSave);
+// ── Firebase 登入（GitHub 版）：帳號由管理員在 Firebase 後台建立，設定存在 Firestore users/<uid> ──
+const FB_CONFIG = {
+  apiKey: 'AIzaSyBb-1jqe9svN3JxfVNWRjmUpyjm_x-EdxM',
+  authDomain: 'etf-backtest-9d6cf.firebaseapp.com',
+  projectId: 'etf-backtest-9d6cf',
+  storageBucket: 'etf-backtest-9d6cf.firebasestorage.app',
+  messagingSenderId: '520094225582',
+  appId: '1:520094225582:web:9b96dd221eb8d00a83093f'
+};
+const FB_V = '10.12.2';
+let FB = null;
+function fbBadge() {
+  const el = $('accBadge'); if (!el) return;
+  const u = ACC.fbUser;
+  if (!FB) el.innerHTML = '<span>未登入</span><span class="accNote">設定記在這台裝置</span>';
+  else if (!u) el.innerHTML = '<span class="accNote">設定記在這台裝置</span><button type="button" class="accbtn" data-act="login">登入</button>';
+  else el.innerHTML = `<span><b class="accName"></b></span><span class="accNote">${ACC.fbDenied ? '帳號尚未開通，設定記在這台裝置' : '設定存在雲端'}</span><button type="button" class="accbtn" data-act="logout">登出</button>`;
+  const nm = el.querySelector('.accName'); if (nm) nm.textContent = u ? u.email : '';
+}
+async function fbInit() {
+  try {
+    const base = `https://www.gstatic.com/firebasejs/${FB_V}/`;
+    const [A, U, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+    const app = A.initializeApp(FB_CONFIG);
+    FB = { auth: U.getAuth(app), db: F.getFirestore(app), U, F };
+    fbBadge();
+    U.onAuthStateChanged(FB.auth, fbUser);
+  } catch (e) { FB = null; fbBadge(); }
+}
+async function fbUser(u) {
+  await accReady;
+  ACC.fbUser = u || null; ACC.fbDenied = false; ACC.fbRef = null;
+  if (!u) { ACC.mode = 'local'; ACC.data = lsGet(); accApplyLoaded(); fbBadge(); return; }
+  const ref = FB.F.doc(FB.db, 'users', u.uid);
+  try {
+    const snap = await FB.F.getDoc(ref);
+    ACC.mode = 'fb'; ACC.fbRef = ref;
+    if (snap.exists()) ACC.data = snap.data();
+    else {   // 第一次登入：把這台裝置上的設定搬到雲端
+      ACC.data = lsGet();
+      accApplyLoaded();
+      try { await FB.F.setDoc(ref, { ...accBody(), updatedAt: new Date().toISOString() }); } catch (e) {}
+    }
+  } catch (e) {
+    ACC.mode = 'local'; ACC.fbDenied = true; ACC.data = lsGet();
+  }
+  accApplyLoaded(); fbBadge();
+}
+function fbMsg(t) { $('lgMsg').textContent = t; }
+const FB_ERR = {
+  'auth/invalid-credential': 'Email 或密碼錯誤。', 'auth/wrong-password': 'Email 或密碼錯誤。', 'auth/user-not-found': 'Email 或密碼錯誤。',
+  'auth/invalid-email': 'Email 格式不對。', 'auth/user-disabled': '這個帳號已經停用。', 'auth/too-many-requests': '嘗試太多次，請稍後再試。',
+  'auth/network-request-failed': '網路連線失敗，請稍後再試。', 'auth/missing-password': '請輸入密碼。'
+};
+if (ALL._remote) {
+  fbInit();
+  $('accBadge').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b || !FB) return;
+    if (b.dataset.act === 'login') { $('loginBox').hidden = false; fbMsg(''); $('lgEmail').focus(); }
+    if (b.dataset.act === 'logout') FB.U.signOut(FB.auth);
+  });
+  $('lgClose').addEventListener('click', () => { $('loginBox').hidden = true; });
+  $('loginBox').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!FB) return;
+    $('lgGo').disabled = true; fbMsg('登入中…');
+    try {
+      await FB.U.signInWithEmailAndPassword(FB.auth, $('lgEmail').value.trim(), $('lgPass').value);
+      $('lgPass').value = ''; $('loginBox').hidden = true; fbMsg('');
+    } catch (err) { fbMsg(FB_ERR[err && err.code] || '登入失敗，請稍後再試。'); }
+    $('lgGo').disabled = false;
+  });
+  $('lgReset').addEventListener('click', async () => {
+    const em = $('lgEmail').value.trim();
+    if (!em) { fbMsg('請先輸入 Email，再按忘記密碼。'); return; }
+    try { await FB.U.sendPasswordResetEmail(FB.auth, em); fbMsg('如果這個 Email 有帳號，重設密碼的信已經寄出，請到信箱收信。'); }
+    catch (err) { fbMsg(FB_ERR[err && err.code] || '寄送失敗，請稍後再試。'); }
+  });
+}
+
 if (location.hash === '#stocks') route();
 </script>
 
