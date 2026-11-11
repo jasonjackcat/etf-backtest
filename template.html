@@ -135,6 +135,10 @@ input[type=number]{font-family:var(--f-num)}
 @media (max-width:640px){.cnt{margin-left:0}}
 .wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .wgrid input{font-family:var(--f-num);text-transform:uppercase}
+.wcell{position:relative;min-width:0}
+.wcell input{padding-right:10px}
+.wcell.named input{padding-right:min(calc(16px + var(--nw, 48px)), calc(100% - 64px))}
+.wname{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none;max-width:calc(100% - 74px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wgrid input.bad{border-color:var(--up)}
 .wact{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .btn{font:inherit;font-size:14px;font-weight:500;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
@@ -1328,11 +1332,26 @@ async function sFetchMissing() {
   if (!fail.length) setTimeout(() => { delete st.dataset.msg; sWatchUi(); }, 10000);
 }
 
+function sNameOf(code) {
+  return sName(code) || (S_INDEX && S_INDEX[code] ? S_INDEX[code][0] : '');
+}
+function sWNames() {
+  document.querySelectorAll('#sWGrid .wcell').forEach(cell => {
+    const inp = cell.querySelector('input'), lab = cell.querySelector('.wname');
+    const nm = sNameOf(inp.value.trim().toUpperCase());
+    lab.textContent = nm;
+    cell.classList.toggle('named', !!nm);
+    cell.style.setProperty('--nw', Math.min(nm.length, 8) * 12 + 'px');
+    lab.title = nm;
+  });
+}
 function sFillInputs() {
-  $('sWGrid').innerHTML = Array.from({ length: 10 }, (_, k) => `<input id="sW${k}" aria-label="自選股 ${k + 1}" placeholder="代號 ${k + 1}" maxlength="6" autocomplete="off" value="${sWatch[k] || ''}">`).join('');
+  $('sWGrid').innerHTML = Array.from({ length: 10 }, (_, k) => `<div class="wcell"><input id="sW${k}" aria-label="自選股 ${k + 1}" placeholder="代號 ${k + 1}" maxlength="6" autocomplete="off" value="${sWatch[k] || ''}"><span class="wname" aria-hidden="true"></span></div>`).join('');
+  sWNames();
   sWatchUi();
 }
 function sWatchUi() {
+  if (document.querySelector('#sWGrid .wcell')) sWNames();
   const ae = $('sAvail');
   if (S_REMOTE) {
     if (ae) ae.textContent = S_INDEX ? `可以輸入任何上市櫃股票或 ETF 代號（共 ${Object.keys(S_INDEX).length} 檔，資料至 ${ALL._asof || ''}）。` : '';
@@ -1457,8 +1476,10 @@ function sInit() {
   sTk = sList()[0] || null;
   sBuildChips(); sFillInputs();
   $('sSave').addEventListener('click', sSaveWatch);
+  $('sWGrid').addEventListener('input', sWNames);
   $('sClear').addEventListener('click', () => {
     document.querySelectorAll('#sWGrid input').forEach(i => { i.value = ''; i.classList.remove('bad'); });
+    sWNames();
     const st = $('sWStatus'); st.dataset.msg = 1;
     st.textContent = '已清空 10 個欄位，按「儲存清單」後才會生效；不想清除的話重新整理網頁即可。';
   });
