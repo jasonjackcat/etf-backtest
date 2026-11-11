@@ -49,3 +49,31 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # 公開儲存庫 60 天沒有修改，GitHub 會自動停用排程；這裡讓它保持啟用
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 超過 30 天沒有修改就更新 last_update.txt
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $(( (now - last) / 86400 )) -ge 30 ]; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > last_update.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add last_update.txt
+            git commit -m "保持排程啟用"
+            git push
+          else
+            echo "最近 30 天內有修改，不需要處理"
+          fi
+      - name: 重新確認排程為啟用狀態
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update.yml/enable"
