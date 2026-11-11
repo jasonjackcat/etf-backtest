@@ -169,6 +169,8 @@ td b{font-family:var(--f-num);font-weight:600}
 .p-div{background:var(--div-soft);color:var(--div)}
 .p-today{background:var(--div-soft);color:var(--div);border:1px solid var(--div)}
 tr.hot td{background:var(--div-soft)}
+.acts{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.smartbtn{color:var(--div);border-color:var(--div)}
 .pickbox{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 0;white-space:normal}
 .pickbox select{width:auto;max-width:100%}
 tr.pick td{background:var(--surface-2)}
@@ -197,6 +199,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <nav class="tabs" aria-label="分頁">
       <a href="#etf" class="tab" id="tabEtf">ETF</a>
       <a href="#stocks" class="tab" id="tabStocks">個股</a>
+      <a href="#member" class="tab" id="tabMember" hidden>會員專區</a>
       <span class="acc" id="accBadge" aria-live="polite"><span>連線中…</span></span>
     </nav>
     <form class="login" id="loginBox" hidden autocomplete="on">
@@ -244,6 +247,10 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
           <div class="s" id="sPnlS"></div>
         </div>
       </div>
+    </div>
+    <div class="vhead" id="vMemberHead" hidden>
+      <div class="eyebrow"><span class="dot"></span><b>會員專區</b></div>
+      <div class="hero"><div><h1>會員專區</h1><div class="meta" id="mMeta">登入後才看得到這一頁。</div></div></div>
     </div>
   </div>
 </section>
@@ -537,6 +544,24 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
 </div>
 </div>
+</div>
+
+<div class="in body" id="vMemberBody" hidden>
+  <div class="card" id="mSmart">
+    <div class="head"><h3>智慧單</h3><span class="hint" id="mSmartAsof"></span></div>
+    <p class="cap">在「個股」分頁的「今日進場訊號」按「加入智慧單」的股票會列在這裡，記錄加入當時的訊號和價格，並和最新收盤價比較。</p>
+    <div class="tw tscroll"><table id="mSmartT"><thead><tr>
+      <th class="l">股票</th><th class="c">加入日期</th><th class="c">訊號日</th><th>當時收盤</th><th>OSC 低點</th><th>當時勝率</th><th>最新收盤</th><th>漲跌</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card" id="mOrders" hidden>
+    <div class="head"><h3>下單紀錄</h3><span class="hint" id="mOrdersNote"></span></div>
+    <p class="cap">在上面的智慧單按「下單」會送出一筆下單意圖：買進 1 張、限價＝訊號日收盤、ROD。網頁不會直接下單，要等你電腦上的「下單工具」檢查保險條件、你按 y 確認後才會送到永豐。還沒處理的單可以在這裡取消。</p>
+    <div class="tw tscroll"><table id="mOrdersT"><thead><tr>
+      <th class="l">建立時間</th><th class="l">股票</th><th class="c">買賣</th><th>張數</th><th>限價</th><th class="c">狀態</th><th class="l">說明</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="empty" id="mLock" hidden>這一頁需要登入才看得到，請按右上角的「登入」。</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -836,14 +861,27 @@ $('cfg').addEventListener('change', e => { if (e.target.id !== 'tk') render(); }
 $('fYear').addEventListener('change', drawTx);
 $('zbar').addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) setRange(+b.dataset.r); });
 $('cPx').addEventListener('dblclick', () => setRange(0));
+// 會員專區：登入的人才看得到分頁（GitHub 版看 Firebase 登入；claude.ai 版看 claude.ai 登入）
+function memberOk() {
+  if (typeof ACC === 'undefined') return false;
+  return ALL._remote ? !!ACC.fbUser : ACC.state === 'ready';
+}
 function route() {
-  const stocks = location.hash === '#stocks';
-  $('vEtfHead').hidden = $('vEtfBody').hidden = stocks;
-  $('vStockHead').hidden = $('vStockBody').hidden = !stocks;
-  $('tabEtf').toggleAttribute('aria-current', !stocks); if (!stocks) $('tabEtf').setAttribute('aria-current', 'page');
-  $('tabStocks').toggleAttribute('aria-current', stocks); if (stocks) $('tabStocks').setAttribute('aria-current', 'page');
-  if (!stocks && cPx) { cPx.resize(); cEq && cEq.resize(); }
-  if (stocks && typeof sInit === 'function') { sInit(); [sPxC, sOscC, sEqC].forEach(c => c && c.resize()); }
+  const h = location.hash;
+  const view = h === '#stocks' ? 'stocks' : h === '#member' ? 'member' : 'etf';
+  const ok = memberOk();
+  $('tabMember').hidden = !ok && view !== 'member';
+  $('vEtfHead').hidden = $('vEtfBody').hidden = view !== 'etf';
+  $('vStockHead').hidden = $('vStockBody').hidden = view !== 'stocks';
+  $('vMemberHead').hidden = $('vMemberBody').hidden = view !== 'member';
+  $('mSmart').hidden = !ok; $('mLock').hidden = ok; $('mOrders').hidden = !ok || !ALL._remote;
+  if (view === 'member' && ok && typeof smartRender === 'function') { smartRender(); if (typeof sLoadScan === 'function') sLoadScan().then(smartRender); }
+  $('mMeta').textContent = ok ? '這一頁只有登入的人看得到。' : '登入後才看得到這一頁。';
+  [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabMember', 'member']].forEach(([id, v]) => {
+    const el = $(id); if (v === view) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
+  });
+  if (view === 'etf' && cPx) { cPx.resize(); cEq && cEq.resize(); }
+  if (view === 'stocks' && typeof sInit === 'function') { sInit(); [sPxC, sOscC, sEqC].forEach(c => c && c.resize()); }
 }
 window.addEventListener('hashchange', route);
 route();
@@ -1036,12 +1074,13 @@ function sScanRender() {
     const wcell = !w ? '<span class="hint">計算中…</span>'
       : w.w == null ? `<span class="hint">—（0 次）</span>`
       : `<span class="${w.w >= 0.5 ? 'up' : 'down'}">${Math.round(w.w * 100)}%</span> <span class="hint">（${w.n} 次）</span>`;
-    return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="c n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td class="n">${wcell}</td><td>${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}</td></tr>`;
+    return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="c n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td class="n">${wcell}</td><td class="acts">${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}${memberOk() ? (smartHas(r.code) ? '<span class="hint">已在智慧單</span>' : `<button type="button" class="linkbtn smartbtn" data-smart="${r.code}">加入智慧單</button>`) : ''}</td></tr>`;
   }).join('') || `<tr><td class="l" colspan="8">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
+  sScanLast = out;
   sScanQueue(pending);
 }
 // 背景下載候選股票的完整日 K 來算勝率（每次 8 檔，下載過的就不再重抓）
-let sScanWin = {}, sScanWinKey = '', sScanLoading = false;
+let sScanWin = {}, sScanWinKey = '', sScanLoading = false, sScanLast = [];
 const sScanTried = new Set();
 function sScanQueue(codes) {
   const need = codes.filter(c => !sHas(c) && !sScanTried.has(c));
@@ -1528,7 +1567,7 @@ function sInit() {
       g.querySelectorAll('[data-v]').forEach(x => x.classList.toggle('on', x === b));
       sScanRender();
     }));
-    $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanPick(b, b.dataset.add); });
+    $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanPick(b, b.dataset.add); const m = e.target.closest('[data-smart]'); if (m) smartAdd(m.dataset.smart); });
   }
   sDbInit();
 }
@@ -1559,6 +1598,7 @@ function accApplyStk(pf) {
 }
 function accBadge(note) {
   if (ALL._remote) { fbBadge(); return; }
+  route();
   const el = $('accBadge'); if (!el) return;
   const who = ACC.name || '你';
   let html;
@@ -1572,7 +1612,7 @@ function accBadge(note) {
 let accTimer = null, accLast = '';
 function accBody(extra) {
   const prev = ACC.data || {};
-  return { codes: sWatch.slice(0, 10), etf: accEtfPrefs(), stock: sInited ? accStkPrefs() : (prev.stock || null), ...(extra || {}) };
+  return { codes: sWatch.slice(0, 10), etf: accEtfPrefs(), stock: sInited ? accStkPrefs() : (prev.stock || null), smart: Array.isArray(ACC.smart) ? ACC.smart : (prev.smart || []), ...(extra || {}) };
 }
 async function accWrite(extra) {
   if (ACC.state === 'loading') return false;
@@ -1628,6 +1668,7 @@ const accReady = (async () => {
   accApplyLoaded();
 })();
 function accApplyLoaded() {
+  ACC.smart = ACC.data && Array.isArray(ACC.data.smart) ? ACC.data.smart.slice(0, 50) : [];
   if (ACC.data) {
     if (Array.isArray(ACC.data.codes)) sWatch = ACC.data.codes.map(String).slice(0, 10);
     accApplyEtf(ACC.data.etf);
@@ -1635,7 +1676,8 @@ function accApplyLoaded() {
     accLast = JSON.stringify(accBody());
   }
   accBadge();
-  if (sInited) sWatchUi();
+  if (sInited) { sWatchUi(); sScanRender(); }
+  smartRender();
 }
 $('cfg').addEventListener('input', accQueueSave);
 $('cfg').addEventListener('change', accQueueSave);
@@ -1652,6 +1694,7 @@ const FB_CONFIG = {
 };
 const FB_V = '10.12.2';
 function fbBadge() {
+  route();
   const el = $('accBadge'); if (!el) return;
   const u = ACC.fbUser;
   if (!FB) el.innerHTML = '<span>未登入</span><span class="accNote">設定記在這台裝置</span>';
@@ -1677,6 +1720,7 @@ async function fbInit() {
 async function fbUser(u) {
   await accReady;
   ACC.fbUser = u || null; ACC.fbDenied = false; ACC.fbRef = null; ACC.fbErr = '';
+  ordWatch(u);
   if (!u) { ACC.mode = 'local'; ACC.data = lsGet(); accApplyLoaded(); fbBadge(); return; }
   ACC.fbState = 'loading'; fbBadge();   // 先顯示已登入，再讀雲端設定
   const ref = FB.F.doc(FB.db, 'users', u.uid);
@@ -1755,6 +1799,106 @@ if (ALL._remote) {
     catch (err) { fbMsg(FB_ERR[err && err.code] || '寄送失敗，請稍後再試。'); }
   });
 }
+
+// ── 智慧單：登入的人在「今日進場訊號」加入，顯示在會員專區；存在帳號設定的 smart 欄位 ──
+function smartList() { return Array.isArray(ACC.smart) ? ACC.smart : []; }
+function smartHas(code) { return smartList().some(x => x.code === code); }
+async function smartAdd(code) {
+  if (!memberOk() || smartHas(code)) return;
+  const r = (sScanLast || []).find(x => x.code === code);
+  if (!r) return;
+  if (smartList().length >= 50) { $('sScanCount').textContent = '智慧單最多 50 檔，請先到會員專區移除一些。'; return; }
+  ACC.smart = smartList().concat({
+    code, name: r.name, added: new Date(Date.now() + 28800000).toISOString().slice(0, 10),
+    sig: S_SCAN ? S_SCAN.asof : '', price: +r.close.toFixed(2), lowp: +r.lowp.toFixed(2),
+    win: r.win && r.win.w != null ? Math.round(r.win.w * 100) : null, n: r.win ? r.win.n : 0
+  });
+  try { await accWrite(); } catch (e) {}
+  sScanRender(); smartRender();
+}
+async function smartRemove(code) {
+  ACC.smart = smartList().filter(x => x.code !== code);
+  try { await accWrite(); } catch (e) {}
+  smartRender(); sScanRender();
+}
+function smartLatest(code) {
+  if (S_SCAN && S_SCAN.rows && S_SCAN.rows[code]) { const r = S_SCAN.rows[code]; return { c: r[r.length - 1][1], d: r[r.length - 1][0] }; }
+  if (ALL[code] && ALL[code].px && ALL[code].px.length) { const r = ALL[code].px[ALL[code].px.length - 1]; return { c: r[2], d: r[0] }; }
+  return null;
+}
+function smartRender() {
+  const tb = $('mSmartT') && $('mSmartT').tBodies[0]; if (!tb) return;
+  const list = smartList();
+  $('mSmartAsof').textContent = S_SCAN ? `最新收盤 ${S_SCAN.asof}` : '';
+  tb.innerHTML = list.map(x => {
+    const L = smartLatest(x.code), chg = L ? L.c / x.price - 1 : null;
+    return `<tr><td class="l"><b>${x.code}</b> ${x.name || ''}</td><td class="c n">${x.added}</td><td class="c n">${x.sig || '—'}</td><td class="n">${x.price.toFixed(2)}</td><td class="n down">${x.lowp != null ? x.lowp.toFixed(2) + '%' : '—'}</td><td class="n">${x.win != null ? x.win + '%<span class="hint">（' + x.n + ' 次）</span>' : '—'}</td><td class="n">${L ? L.c.toFixed(2) : '—'}</td><td class="n ${chg == null ? '' : cls(chg)}">${chg == null ? '—' : pct(chg)}</td><td class="acts">${ordCell(x.code)}<button type="button" class="linkbtn" data-unsmart="${x.code}">移除</button></td></tr>`;
+  }).join('') || '<tr><td class="l" colspan="9">還沒有智慧單。到「個股」分頁的「今日進場訊號」，在想追蹤的股票按「加入智慧單」。</td></tr>';
+}
+$('mSmartT').addEventListener('click', e => {
+  const r = e.target.closest('[data-unsmart]'); if (r) smartRemove(r.dataset.unsmart);
+  const o = e.target.closest('[data-order]'); if (o) ordPlace(o.dataset.order, o);
+});
+
+// ── 下單意圖（GitHub 版）：寫到 Firestore users/<uid>/orders，由使用者電腦上的下單工具確認後才送到永豐 ──
+// 狀態：pending 待處理 → confirmed 已確認 → submitted 已送出；或 rejected 已拒絕／cancelled 已取消／expired 已過期／error 錯誤
+const ORD_ST = { pending: '待處理', confirmed: '已確認，送單中', submitted: '已送出', rejected: '已拒絕', cancelled: '已取消', expired: '已過期', error: '錯誤' };
+let ORDERS = [], ordUnsub = null, ordErr = '';
+function ordReady() { return !!(ALL._remote && FB && ACC.fbUser && ACC.mode === 'fb'); }
+function ordActive(code) { return ORDERS.find(o => o.code === code && (o.status === 'pending' || o.status === 'confirmed')); }
+function ordCell(code) {
+  if (!ordReady()) return '';
+  return ordActive(code) ? '<span class="hint">下單處理中</span>' : `<button type="button" class="linkbtn smartbtn" data-order="${code}">下單</button>`;
+}
+function ordWatch(u) {
+  if (ordUnsub) { ordUnsub(); ordUnsub = null; }
+  ORDERS = []; ordErr = '';
+  if (!u || !FB) { ordRender(); return; }
+  const F = FB.F, q = F.query(F.collection(FB.db, 'users', u.uid, 'orders'), F.orderBy('createdAt', 'desc'), F.limit(30));
+  ordUnsub = F.onSnapshot(q, s => {
+    ORDERS = s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+    ordErr = ''; ordRender(); smartRender();
+  }, e => { ordErr = e && e.code === 'permission-denied' ? '讀不到下單紀錄：Firebase 規則還沒更新，或帳號尚未開通。' : '讀不到下單紀錄，請稍後再試。'; ordRender(); });
+}
+async function ordPlace(code, btn) {
+  if (!ordReady() || ordActive(code)) return;
+  const x = smartList().find(s => s.code === code); if (!x) return;
+  const qty = 1, price = +(+x.price).toFixed(2);
+  const amt = Math.round(price * qty * 1000).toLocaleString('zh-TW');
+  if (!confirm(`送出下單意圖？\n\n買進 ${code} ${x.name || ''}\n${qty} 張，限價 ${price.toFixed(2)}（訊號日 ${x.sig || '—'} 收盤），ROD\n約 ${amt} 元（不含手續費）\n\n網頁不會直接下單：要等你電腦上的下單工具檢查、你按 y 確認後才會送出。`)) return;
+  btn.disabled = true;
+  try {
+    const F = FB.F;
+    await F.addDoc(F.collection(FB.db, 'users', ACC.fbUser.uid, 'orders'), {
+      code, name: String(x.name || '').slice(0, 40), action: 'Buy', qty, price, priceType: 'LMT', orderType: 'ROD',
+      sig: String(x.sig || ''), status: 'pending', createdAt: F.serverTimestamp()
+    });
+  } catch (e) {
+    btn.disabled = false;
+    alert(e && e.code === 'permission-denied' ? '送不出去：Firebase 規則還沒更新（要加 orders），或帳號尚未開通。' : '送不出去，請稍後再試。');
+  }
+}
+async function ordCancel(id) {
+  if (!ordReady() || !confirm('取消這筆還沒處理的下單意圖？')) return;
+  try { await FB.F.updateDoc(FB.F.doc(FB.db, 'users', ACC.fbUser.uid, 'orders', id), { status: 'cancelled', cancelledAt: FB.F.serverTimestamp() }); }
+  catch (e) { alert('取消失敗：這筆可能已經被下單工具處理了。'); }
+}
+function ordTime(t) {
+  if (!t || !t.toDate) return '—';
+  const d = new Date(t.toDate().getTime() + 28800000).toISOString();
+  return d.slice(5, 10) + ' ' + d.slice(11, 16);
+}
+function ordRender() {
+  const tb = $('mOrdersT') && $('mOrdersT').tBodies[0]; if (!tb) return;
+  $('mOrdersNote').textContent = ordErr;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  tb.innerHTML = ORDERS.map(o => {
+    const st = ORD_ST[o.status] || o.status, live = o.status === 'pending' || o.status === 'confirmed';
+    const msg = [o.msg, o.sim ? '模擬' : '', o.ordno ? '委託書號 ' + o.ordno : ''].filter(Boolean).join('・');
+    return `<tr><td class="l n">${ordTime(o.createdAt)}</td><td class="l"><b>${esc(o.code)}</b> ${esc(o.name)}</td><td class="c">${o.action === 'Buy' ? '買進' : '賣出'}</td><td class="n">${esc(o.qty)}</td><td class="n">${(+o.price).toFixed(2)}</td><td class="c">${live ? `<span class="wpend">${st}</span>` : st}</td><td class="l hint">${esc(msg)}</td><td>${o.status === 'pending' ? `<button type="button" class="linkbtn" data-ocancel="${esc(o.id)}">取消</button>` : ''}</td></tr>`;
+  }).join('') || '<tr><td class="l" colspan="8">還沒有下單紀錄。</td></tr>';
+}
+$('mOrdersT').addEventListener('click', e => { const b = e.target.closest('[data-ocancel]'); if (b) ordCancel(b.dataset.ocancel); });
 
 if (location.hash === '#stocks') route();
 </script>
