@@ -554,11 +554,29 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <th class="l">股票</th><th class="c">加入日期</th><th class="c">訊號日</th><th>當時收盤</th><th>OSC 低點</th><th>當時勝率</th><th>最新收盤</th><th>漲跌</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
+  <div class="card" id="mMon" hidden>
+    <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
+    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:25 盯盤（下單工具要開著）。預設值依個股分頁的停損／停利 %。</p>
+    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+      <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
+      <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><input type="number" id="monEntry" step="0.01" min="0"></div>
+      <div class="f"><label for="monTp">停利價（現價 ≥ 這個就賣）</label><input type="number" id="monTp" step="0.01" min="0"></div>
+      <div class="f"><label for="monSl">停損價（現價 ≤ 這個就賣）</label><input type="number" id="monSl" step="0.01" min="0"></div>
+      <div class="f"><label for="monUntil">監控到期日</label><input type="date" id="monUntil"></div>
+      <div class="f"><label for="monExp">到期時還持有</label><select id="monExp"><option value="sell">到期日 13:20 市價賣出</option><option value="stop">只停止監控（股票留著）</option></select></div>
+    </div>
+    <label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="monAck" style="width:auto"> 我了解觸價後下單工具會<b>自動</b>用市價買進／賣出，不會再問我（仍受工具的張數、金額、每日上限限制）。</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button type="button" class="btn" id="monGo">送出監控</button>
+      <button type="button" class="linkbtn" id="monClose">取消</button>
+      <span class="hint" id="monMsg" aria-live="polite"></span>
+    </div>
+  </div>
   <div class="card" id="mOrders" hidden>
     <div class="head"><h3>下單紀錄</h3><span class="hint" id="mOrdersNote"></span></div>
     <p class="cap">在上面的智慧單按「下單」會送出一筆下單意圖：買進 1 張、限價＝訊號日收盤、ROD。網頁不會直接下單，要等你電腦上的「下單工具」檢查保險條件、你按 y 確認後才會送到永豐。還沒處理的單可以在這裡取消。</p>
     <div class="tw tscroll"><table id="mOrdersT"><thead><tr>
-      <th class="l">建立時間</th><th class="l">股票</th><th class="c">買賣</th><th>張數</th><th>限價</th><th class="c">狀態</th><th class="l">說明</th><th></th>
+      <th class="l">建立時間</th><th class="l">股票</th><th class="c">買賣</th><th>張數</th><th>限價／進場價</th><th class="c">狀態</th><th>損益</th><th class="l">說明</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
   <div class="empty" id="mLock" hidden>這一頁需要登入才看得到，請按右上角的「登入」。</div>
@@ -875,6 +893,7 @@ function route() {
   $('vStockHead').hidden = $('vStockBody').hidden = view !== 'stocks';
   $('vMemberHead').hidden = $('vMemberBody').hidden = view !== 'member';
   $('mSmart').hidden = !ok; $('mLock').hidden = ok; $('mOrders').hidden = !ok || !ALL._remote;
+  if (!ok || !ALL._remote) $('mMon').hidden = true;
   if (view === 'member' && ok && typeof smartRender === 'function') { smartRender(); if (typeof sLoadScan === 'function') sLoadScan().then(smartRender); }
   $('mMeta').textContent = ok ? '這一頁只有登入的人看得到。' : '登入後才看得到這一頁。';
   [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabMember', 'member']].forEach(([id, v]) => {
@@ -1838,17 +1857,65 @@ function smartRender() {
 $('mSmartT').addEventListener('click', e => {
   const r = e.target.closest('[data-unsmart]'); if (r) smartRemove(r.dataset.unsmart);
   const o = e.target.closest('[data-order]'); if (o) ordPlace(o.dataset.order, o);
+  const m = e.target.closest('[data-mon]'); if (m) monOpen(m.dataset.mon);
 });
+
+// ── 監控單：網頁設定進場／停利／停損價與到期日，下單工具觸價就市價成交 ──
+let monCode = '';
+function monOpen(code) {
+  const x = smartList().find(s => s.code === code); if (!x || !ordReady()) return;
+  monCode = code;
+  const p = +x.price, sl = +($('sSl') && $('sSl').value) || 8, tp = +($('sTp') && $('sTp').value) || 15;
+  $('monName').textContent = `${code} ${x.name || ''}`;
+  $('monQty').value = 1;
+  $('monEntry').value = p.toFixed(2);
+  $('monTp').value = (p * (1 + tp / 100)).toFixed(2);
+  $('monSl').value = (p * (1 - sl / 100)).toFixed(2);
+  $('monUntil').value = new Date(Date.now() + 28800000 + 30 * 86400000).toISOString().slice(0, 10);
+  $('monExp').value = 'sell'; $('monAck').checked = false; $('monMsg').textContent = '';
+  $('mMon').hidden = false; $('mMon').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+async function monSubmit() {
+  const msg = t => { $('monMsg').textContent = t; };
+  const x = smartList().find(s => s.code === monCode); if (!x || !ordReady()) return;
+  const qty = Math.round(+$('monQty').value), entry = +(+$('monEntry').value).toFixed(2), tp = +(+$('monTp').value).toFixed(2), sl = +(+$('monSl').value).toFixed(2);
+  const until = $('monUntil').value, today = new Date(Date.now() + 28800000).toISOString().slice(0, 10);
+  if (!(qty >= 1 && qty <= 10)) return msg('張數要是 1～10。');
+  if (!(entry > 0)) return msg('請輸入進場價。');
+  if (!(tp > entry)) return msg('停利價要比進場價高。');
+  if (!(sl > 0 && sl < entry)) return msg('停損價要比進場價低。');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < today) return msg('監控到期日不能早於今天。');
+  if (!$('monAck').checked) return msg('請先勾選「我了解觸價後會自動成交」。');
+  if (ordActive(monCode)) return msg('這檔已經有處理中的單或監控。');
+  $('monGo').disabled = true; msg('送出中…');
+  try {
+    const F = FB.F;
+    await F.addDoc(F.collection(FB.db, 'users', ACC.fbUser.uid, 'orders'), {
+      type: 'monitor', code: monCode, name: String(x.name || '').slice(0, 40), action: 'Buy', qty, entry, tp, sl, until,
+      expiry: $('monExp').value === 'stop' ? 'stop' : 'sell', sig: String(x.sig || ''), status: 'pending', createdAt: F.serverTimestamp()
+    });
+    msg(''); $('mMon').hidden = true;
+  } catch (e) {
+    msg(e && e.code === 'permission-denied' ? '送不出去：Firebase 規則還沒更新（要加監控單），或帳號尚未開通。' : '送不出去，請稍後再試。');
+  }
+  $('monGo').disabled = false;
+}
+$('monGo').addEventListener('click', monSubmit);
+$('monClose').addEventListener('click', () => { $('mMon').hidden = true; });
 
 // ── 下單意圖（GitHub 版）：寫到 Firestore users/<uid>/orders，由使用者電腦上的下單工具確認後才送到永豐 ──
 // 狀態：pending 待處理 → confirmed 已確認 → submitted 已送出；或 rejected 已拒絕／cancelled 已取消／expired 已過期／error 錯誤
-const ORD_ST = { pending: '待處理', confirmed: '已確認，送單中', submitted: '已送出', rejected: '已拒絕', cancelled: '已取消', expired: '已過期', error: '錯誤' };
+const ORD_ST = { pending: '待處理', confirmed: '已確認，送單中', submitted: '已送出', rejected: '已拒絕', cancelled: '已取消', expired: '已過期', error: '錯誤',
+  watching: '監控中・等進場', buying: '買進中', holding: '持有・監控出場', selling: '賣出中', closed: '已出場' };
+const ORD_LIVE = ['pending', 'confirmed', 'watching', 'buying', 'holding', 'selling'];
 let ORDERS = [], ordUnsub = null, ordErr = '';
 function ordReady() { return !!(ALL._remote && FB && ACC.fbUser && ACC.mode === 'fb'); }
-function ordActive(code) { return ORDERS.find(o => o.code === code && (o.status === 'pending' || o.status === 'confirmed')); }
+function ordActive(code) { return ORDERS.find(o => o.code === code && ORD_LIVE.includes(o.status)); }
 function ordCell(code) {
   if (!ordReady()) return '';
-  return ordActive(code) ? '<span class="hint">下單處理中</span>' : `<button type="button" class="linkbtn smartbtn" data-order="${code}">下單</button>`;
+  const a = ordActive(code);
+  if (a) return `<span class="hint">${a.type === 'monitor' ? '監控中' : '下單處理中'}</span>`;
+  return `<button type="button" class="linkbtn smartbtn" data-order="${code}">下單</button><button type="button" class="linkbtn smartbtn" data-mon="${code}">監控</button>`;
 }
 function ordWatch(u) {
   if (ordUnsub) { ordUnsub(); ordUnsub = null; }
@@ -1879,7 +1946,7 @@ async function ordPlace(code, btn) {
   }
 }
 async function ordCancel(id) {
-  if (!ordReady() || !confirm('取消這筆還沒處理的下單意圖？')) return;
+  if (!ordReady() || !confirm('取消這筆還沒處理的下單意圖或監控？（已經買進的監控單不能在這裡取消）')) return;
   try { await FB.F.updateDoc(FB.F.doc(FB.db, 'users', ACC.fbUser.uid, 'orders', id), { status: 'cancelled', cancelledAt: FB.F.serverTimestamp() }); }
   catch (e) { alert('取消失敗：這筆可能已經被下單工具處理了。'); }
 }
@@ -1888,15 +1955,41 @@ function ordTime(t) {
   const d = new Date(t.toDate().getTime() + 28800000).toISOString();
   return d.slice(5, 10) + ' ' + d.slice(11, 16);
 }
+// 損益：買賣都完成才算已實現；扣手續費（和回測一樣的折扣、每筆最低 20 元）與證交稅（ETF 0.1%、股票 0.3%）
+function ordPnl(o) {
+  const buy = +o.buyPrice, sell = +o.sellPrice, q = +(o.soldQty || o.qty);
+  if (!(buy > 0 && q > 0)) return null;
+  const sh = q * 1000, tax = /^00/.test(String(o.code)) ? 0.001 : 0.003, fee = v => Math.max(20, Math.round(v * FEE));
+  if (o.status === 'closed' && sell > 0) {
+    const net = (sell - buy) * sh - fee(buy * sh) - fee(sell * sh) - Math.round(sell * sh * tax);
+    return { net, ret: net / (buy * sh), done: true };
+  }
+  if (o.status === 'holding' || o.status === 'selling') {   // 還沒賣：用最新收盤估未實現
+    const L = smartLatest(String(o.code)); if (!L) return null;
+    const hq = +(o.heldQty || o.qty) * 1000;
+    const net = (L.c - buy) * hq - fee(buy * hq) - fee(L.c * hq) - Math.round(L.c * hq * tax);
+    return { net, ret: net / (buy * hq), done: false };
+  }
+  return null;
+}
 function ordRender() {
   const tb = $('mOrdersT') && $('mOrdersT').tBodies[0]; if (!tb) return;
-  $('mOrdersNote').textContent = ordErr;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const money = v => (v > 0 ? '+' : '') + Math.round(v).toLocaleString('zh-TW');
+  let sum = 0, n = 0;
   tb.innerHTML = ORDERS.map(o => {
-    const st = ORD_ST[o.status] || o.status, live = o.status === 'pending' || o.status === 'confirmed';
-    const msg = [o.msg, o.sim ? '模擬' : '', o.ordno ? '委託書號 ' + o.ordno : ''].filter(Boolean).join('・');
-    return `<tr><td class="l n">${ordTime(o.createdAt)}</td><td class="l"><b>${esc(o.code)}</b> ${esc(o.name)}</td><td class="c">${o.action === 'Buy' ? '買進' : '賣出'}</td><td class="n">${esc(o.qty)}</td><td class="n">${(+o.price).toFixed(2)}</td><td class="c">${live ? `<span class="wpend">${st}</span>` : st}</td><td class="l hint">${esc(msg)}</td><td>${o.status === 'pending' ? `<button type="button" class="linkbtn" data-ocancel="${esc(o.id)}">取消</button>` : ''}</td></tr>`;
-  }).join('') || '<tr><td class="l" colspan="8">還沒有下單紀錄。</td></tr>';
+    const st = ORD_ST[o.status] || o.status, live = ORD_LIVE.includes(o.status), mon = o.type === 'monitor';
+    const plan = mon ? `進 ${(+o.entry).toFixed(2)}・利 ${(+o.tp).toFixed(2)}・損 ${(+o.sl).toFixed(2)}・到 ${String(o.until || '').slice(5)}${o.expiry === 'stop' ? '（到期不賣）' : ''}` : '';
+    const fill = mon && o.buyPrice ? `買 ${(+o.buyPrice).toFixed(2)}${o.sellPrice ? '／賣 ' + (+o.sellPrice).toFixed(2) : ''}` : '';
+    const msg = esc([plan, fill, o.msg, o.sim ? '模擬' : '', o.ordno ? '委託書號 ' + o.ordno : ''].filter(Boolean).join('・'));
+    const P = mon ? ordPnl(o) : null;
+    if (P && P.done) { sum += P.net; n++; }
+    const pcell = P ? `<b class="${cls(P.net)}">${money(P.net)}</b><br><span class="hint ${cls(P.net)}">${(P.ret * 100).toFixed(2)}%${P.done ? '' : '・未實現'}</span>` : '<span class="hint">—</span>';
+    const canCancel = o.status === 'pending' || (mon && o.status === 'watching');
+    return `<tr><td class="l n">${ordTime(o.createdAt)}</td><td class="l"><b>${esc(o.code)}</b> ${esc(o.name)}</td><td class="c">${mon ? '監控' : o.action === 'Buy' ? '買進' : '賣出'}</td><td class="n">${esc(mon && o.heldQty ? o.heldQty : o.qty)}</td><td class="n">${(+(mon ? o.entry : o.price)).toFixed(2)}</td><td class="c">${live ? `<span class="wpend">${st}</span>` : st}</td><td class="n">${pcell}</td><td class="l hint">${msg}</td><td>${canCancel ? `<button type="button" class="linkbtn" data-ocancel="${esc(o.id)}">取消</button>` : ''}</td></tr>`;
+  }).join('') || '<tr><td class="l" colspan="9">還沒有下單紀錄。</td></tr>';
+  $('mOrdersNote').innerHTML = ordErr ? esc(ordErr)
+    : n ? `已實現損益合計 <b class="${cls(sum)}">${money(sum)}</b>（${n} 筆，已扣手續費與證交稅）` : '';
 }
 $('mOrdersT').addEventListener('click', e => { const b = e.target.closest('[data-ocancel]'); if (b) ordCancel(b.dataset.ocancel); });
 
