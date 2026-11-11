@@ -191,6 +191,8 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .tscroll{max-height:540px;overflow:auto}
 .note{font-size:12px;color:var(--muted);line-height:1.8;background:none;border-style:dashed}
 .note p{margin:0 0 6px}
+.disc{font-size:12px;color:var(--muted);line-height:1.8;border-top:1px solid var(--line);margin-top:32px;padding-top:16px;padding-bottom:32px}
+.disc p{margin:0 0 6px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -547,6 +549,12 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 </div>
 
 <div class="in body" id="vMemberBody" hidden>
+  <div class="note card" id="mNotice">
+    <p><b>使用須知</b></p>
+    <p>智慧單、下單、監控的買賣條件都由你自己設定、自己送出；下單工具在<b>你自己的電腦</b>上、用<b>你自己的券商帳號</b>執行，本網站不保管你的券商金鑰或憑證，也不替你判斷買賣。</p>
+    <p>自動下單（觸價市價成交、不跳確認）可能因為網路、券商系統、行情跳動或程式錯誤，發生沒成交、成交價和設定價差很多、重複或漏單等情況。請定時到券商軟體核對委託、成交與庫存。</p>
+    <p>損益統計是估算值（手續費依預設折扣、證交稅依 ETF 0.1%／股票 0.3%），實際金額以券商對帳單為準。使用這些功能即表示你了解並自行承擔上述風險。</p>
+  </div>
   <div class="card" id="mSmart">
     <div class="head"><h3>智慧單</h3><span class="hint" id="mSmartAsof"></span></div>
     <p class="cap">在「個股」分頁的「今日進場訊號」按「加入智慧單」的股票會列在這裡，記錄加入當時的訊號和價格，並和最新收盤價比較。</p>
@@ -594,6 +602,13 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
   <div class="empty" id="mLock" hidden>這一頁需要登入才看得到，請按右上角的「登入」。</div>
 </div>
+
+<footer class="in disc" id="disclaimer">
+  <p><b>免責聲明</b></p>
+  <p>本網站是個人研究用途的回測與紀錄工具，<b>不是證券投資顧問</b>，不提供任何個股推薦或投資建議，也不代為操作任何人的帳戶，且不收取任何費用。</p>
+  <p>網站上的回測結果、進場訊號、勝率，都是用歷史資料依程式條件計算出來的，<b>不代表未來績效</b>。資料來自 yfinance 等公開來源，可能有延遲、錯誤或缺漏，請以證交所、櫃買中心與券商公告為準。</p>
+  <p>投資一定有風險，可能損失本金。任何買賣決定（包含使用下單工具自動下單）都由使用者自行判斷，盈虧由使用者自行承擔。</p>
+</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
@@ -908,6 +923,7 @@ function route() {
   $('mSmart').hidden = !ok; $('mLock').hidden = ok; $('mOrders').hidden = !ok || !ALL._remote;
   if (!ok || !ALL._remote) $('mMon').hidden = true;
   $('mPnl').hidden = !ok || !ALL._remote;
+  $('mNotice').hidden = !ok;
   if (view === 'member' && ok && typeof smartRender === 'function') { smartRender(); if (typeof sLoadScan === 'function') sLoadScan().then(smartRender); }
   $('mMeta').textContent = ok ? '這一頁只有登入的人看得到。' : '登入後才看得到這一頁。';
   [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabMember', 'member']].forEach(([id, v]) => {
