@@ -114,6 +114,25 @@ input[type=number]{font-family:var(--f-num)}
 .chart{position:relative;height:280px}
 .chart.tall{height:400px}
 .chart.osc{height:130px;margin-top:4px}
+.sbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:2px 0 14px}
+.seg2{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:3px;gap:2px}
+.seg2 button{font:inherit;font-size:13px;color:var(--muted);background:none;border:0;border-radius:99px;padding:5px 12px;cursor:pointer;white-space:nowrap}
+.seg2 button:hover{color:var(--ink)}
+.seg2 button.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(15,27,43,.12),0 0 0 1px var(--line)}
+.chip{position:relative;display:inline-flex}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip span{font-size:13px;padding:6px 14px;border-radius:99px;border:1px solid var(--line);color:var(--muted);cursor:pointer;background:var(--surface-2);white-space:nowrap;user-select:none}
+.chip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;border:1.5px solid currentColor;margin-right:7px;vertical-align:0}
+.chip input:checked+span{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.chip input:checked+span::before{background:currentColor}
+.chip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.fld{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:2px 14px}
+.fld input{width:52px;border:0;background:transparent;padding:4px 0;text-align:right;font-family:var(--f-num);font-size:14px;color:var(--ink)}
+.fld input:focus-visible{outline:none}
+.fld:focus-within{border-color:var(--accent)}
+.cnt{margin-left:auto;font-size:13px;font-weight:500;color:var(--accent);background:var(--accent-soft);padding:5px 14px;border-radius:99px;white-space:nowrap}
+.cnt:empty{display:none}
+@media (max-width:640px){.cnt{margin-left:0}}
 .wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .wgrid input{font-family:var(--f-num);text-transform:uppercase}
 .wgrid input.bad{border-color:var(--up)}
@@ -128,6 +147,7 @@ th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;whit
 th{font-weight:500;color:var(--muted);font-size:12px;position:sticky;top:0;background:var(--surface);z-index:1}
 tbody tr:hover td{background:var(--surface-2)}
 td.l,th.l{text-align:left}
+td.c,th.c{text-align:center}
 td.n{font-family:var(--f-num)}
 td b{font-family:var(--f-num);font-weight:600}
 .pill{display:inline-block;font-size:12px;padding:1px 9px;border-radius:99px;font-weight:500}
@@ -354,7 +374,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   <div class="sec" data-watch>
   <h2>自選股（最多 10 檔）</h2>
   <div class="wgrid" id="sWGrid"></div>
-  <div class="wact"><button type="button" class="btn" id="sSave">儲存清單</button><button type="button" class="linkbtn" id="sFetch" hidden>立即抓取</button><span class="hint" id="sWStatus"></span></div>
+  <div class="wact"><button type="button" class="btn" id="sSave">儲存清單</button><button type="button" class="linkbtn" id="sClear">全部清除</button><button type="button" class="linkbtn" id="sFetch" hidden>立即抓取</button><span class="hint" id="sWStatus"></span></div>
   <p class="hint" id="sWHint">每個人的清單各自獨立。輸入台股代號（上市、上櫃都可以），空白的欄位不用填。網頁擁有者加入的股票會在每天 18:00 自動抓資料；其他人只能加入已經有資料的股票。</p>
   <p class="hint" id="sAvail"></p>
   </div>
@@ -414,15 +434,21 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 
   <div class="card" id="sScanCard" hidden>
     <div class="head"><h3>今日進場訊號</h3><span class="hint" id="sScanAsof"></span></div>
-    <p class="cap">用左邊的「進場條件」掃描全部上市櫃股票，列出最新交易日收盤觸發進場訊號的個股。這裡只看訊號，不考慮是否已經持有；要看完整回測，加入自選股即可。</p>
-    <div class="filters">
-      <select id="sScanMkt" aria-label="市場"><option value="">上市＋上櫃</option><option value="上市">只看上市</option><option value="上櫃">只看上櫃</option></select>
-      <label class="hint"><input type="checkbox" id="sScanEtf" checked> 排除 ETF</label>
-      <label class="hint">收盤價至少 <input type="number" id="sScanMin" value="10" min="0" step="5" style="width:72px"> 元</label>
-      <span class="hint" id="sScanCount"></span>
+    <p class="cap">用左邊的「進場條件」掃描全部上市櫃股票，列出最新交易日收盤觸發進場訊號的個股。「回測勝率」是用左邊的期間、進場和出場條件回測這檔股票，已出場的交易中賺錢的比例（括號內是交易次數，次數太少參考價值低）。</p>
+    <div class="sbar">
+      <input type="hidden" id="sScanMkt" value=""><input type="hidden" id="sScanSort" value="osc">
+      <div class="seg2" role="group" aria-label="市場" data-for="sScanMkt">
+        <button type="button" data-v="" class="on">全部</button><button type="button" data-v="上市">上市</button><button type="button" data-v="上櫃">上櫃</button>
+      </div>
+      <label class="chip"><input type="checkbox" id="sScanEtf" checked><span>排除 ETF</span></label>
+      <label class="fld"><span>收盤 ≥</span><input type="number" id="sScanMin" value="10" min="0" step="5" aria-label="最低收盤價"><span>元</span></label>
+      <div class="seg2" role="group" aria-label="排序" data-for="sScanSort">
+        <button type="button" data-v="osc" class="on">依 OSC 低點</button><button type="button" data-v="win">依勝率</button>
+      </div>
+      <span class="cnt" id="sScanCount"></span>
     </div>
     <div class="tw tscroll"><table id="sScanT"><thead><tr>
-      <th class="l">股票</th><th class="l">市場</th><th>收盤</th><th>OSC 低點</th><th>低點日期</th><th>目前 OSC</th><th></th>
+      <th class="l">股票</th><th class="l">市場</th><th>收盤</th><th>OSC 低點</th><th class="c">低點日期</th><th>目前 OSC</th><th title="用左邊的期間、進場和出場條件回測這檔股票，已出場交易中賺錢的比例">回測勝率</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
 
@@ -946,7 +972,7 @@ function sScanRender() {
   if (!S_REMOTE) return;
   const tb = $('sScanT').tBodies[0];
   if (!S_SCAN) { $('sScanCount').textContent = '載入中…'; tb.innerHTML = ''; return; }
-  const c = sCfg(), mkt = $('sScanMkt').value, noEtf = $('sScanEtf').checked, minP = +$('sScanMin').value || 0;
+  const c0 = sCfg(), c = { ...c0, start: c0.start || '2020-01-02', end: c0.end || '9999-12-31' }, mkt = $('sScanMkt').value, noEtf = $('sScanEtf').checked, minP = +$('sScanMin').value || 0;
   const out = [];
   for (const [code, rows] of Object.entries(S_SCAN.rows)) {
     if (!rows.length || rows[rows.length - 1][0] !== S_SCAN.asof) continue;   // 最新交易日沒交易的不算
@@ -960,13 +986,49 @@ function sScanRender() {
     const low = rows[last - c.conv];
     out.push({ code, name: info[0], mkt: info[1], close: rows[last][1], lowp: low[2] / low[1] * 100, lowd: low[0], nowp: px[last].oscp });
   }
-  out.sort((a, b) => a.lowp - b.lowp);
+  const key = JSON.stringify({ ...c, tk: null });
+  if (key !== sScanWinKey) { sScanWin = {}; sScanWinKey = key; }
+  for (const r of out) {
+    if (!(r.code in sScanWin) && sHas(r.code)) {
+      const b = sRun(r.code, { ...c, tk: r.code });
+      sScanWin[r.code] = b ? { n: b.trades.length, w: b.winRate } : { n: 0, w: null };
+    }
+    r.win = sScanWin[r.code];
+  }
+  const sortBy = $('sScanSort').value;
+  out.sort(sortBy === 'win'
+    ? (a, b) => ((b.win && b.win.w != null ? b.win.w : -1) - (a.win && a.win.w != null ? a.win.w : -1)) || ((b.win ? b.win.n : 0) - (a.win ? a.win.n : 0))
+    : (a, b) => a.lowp - b.lowp);
+  const pending = out.filter(r => !r.win).map(r => r.code);
   $('sScanAsof').textContent = `資料日期 ${S_SCAN.asof}`;
-  $('sScanCount').textContent = `符合條件 ${out.length} 檔`;
+  $('sScanCount').textContent = `符合 ${out.length} 檔` + (pending.length ? `・勝率計算中 ${out.length - pending.length}/${out.length}` : '');
   tb.innerHTML = out.map(r => {
     const inW = sWatch.includes(r.code);
-    return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="l n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td>${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}</td></tr>`;
-  }).join('') || `<tr><td class="l" colspan="7">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
+    const w = r.win;
+    const wcell = !w ? '<span class="hint">計算中…</span>'
+      : w.w == null ? `<span class="hint">—（0 次）</span>`
+      : `<span class="${w.w >= 0.5 ? 'up' : 'down'}">${Math.round(w.w * 100)}%</span> <span class="hint">（${w.n} 次）</span>`;
+    return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="c n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td class="n">${wcell}</td><td>${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}</td></tr>`;
+  }).join('') || `<tr><td class="l" colspan="8">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
+  sScanQueue(pending);
+}
+// 背景下載候選股票的完整日 K 來算勝率（每次 8 檔，下載過的就不再重抓）
+let sScanWin = {}, sScanWinKey = '', sScanLoading = false;
+const sScanTried = new Set();
+function sScanQueue(codes) {
+  const need = codes.filter(c => !sHas(c) && !sScanTried.has(c));
+  if (!need.length || sScanLoading) return;
+  sScanLoading = true;
+  (async () => {
+    for (let i = 0; i < need.length; i += 8) {
+      const part = need.slice(i, i + 8);
+      part.forEach(c => sScanTried.add(c));
+      await sEnsure(part);
+      sScanRender();
+    }
+    sScanLoading = false;
+    sScanRender();
+  })();
 }
 function sScanPick(btn, code) {
   document.querySelectorAll('#sScanT tr.pick').forEach(r => r.remove());
@@ -975,7 +1037,7 @@ function sScanPick(btn, code) {
     .concat(sWatch.map((c, i) => `<option value="${i}">取代第 ${i + 1} 欄：${c} ${sName(c) || ''}</option>`));
   const row = document.createElement('tr');
   row.className = 'pick';
-  row.innerHTML = `<td colspan="7"><div class="pickbox"><span>把 <b>${code}</b> 加入自選股：</span><select aria-label="加入的位置">${opts.join('')}</select><button type="button" class="btn" data-ok>確定</button><button type="button" class="linkbtn" data-cancel>取消</button></div></td>`;
+  row.innerHTML = `<td colspan="8"><div class="pickbox"><span>把 <b>${code}</b> 加入自選股：</span><select aria-label="加入的位置">${opts.join('')}</select><button type="button" class="btn" data-ok>確定</button><button type="button" class="linkbtn" data-cancel>取消</button></div></td>`;
   tr.after(row);
   row.querySelector('[data-cancel]').onclick = () => row.remove();
   row.querySelector('[data-ok]').onclick = () => { const v = row.querySelector('select').value; row.remove(); sScanAdd(code, v === '' ? -1 : +v); };
@@ -1395,6 +1457,11 @@ function sInit() {
   sTk = sList()[0] || null;
   sBuildChips(); sFillInputs();
   $('sSave').addEventListener('click', sSaveWatch);
+  $('sClear').addEventListener('click', () => {
+    document.querySelectorAll('#sWGrid input').forEach(i => { i.value = ''; i.classList.remove('bad'); });
+    const st = $('sWStatus'); st.dataset.msg = 1;
+    st.textContent = '已清空 10 個欄位，按「儲存清單」後才會生效；不想清除的話重新整理網頁即可。';
+  });
   $('sFetch').addEventListener('click', sFetchMissing);
   $('sBar').addEventListener('click', e => { const b = e.target.closest('[data-tk]'); if (b) { sSetTicker(b.dataset.tk); sRender(); } });
   $('sCmp').addEventListener('click', e => { const b = e.target.closest('[data-tk]'); if (b) { sSetTicker(b.dataset.tk); sRender(); } });
@@ -1409,7 +1476,13 @@ function sInit() {
   if (S_REMOTE) {
     $('sWHint').textContent = '每個人的清單和設定都記在自己這台裝置的瀏覽器。輸入任何上市櫃股票或 ETF 代號（空白的欄位不用填），按儲存後就會自動下載資料。';
     sLoadIndex().then(() => { sApplyWatch(sWatch); sWatchUi(); sLoadScan(); });
-    ['sScanMkt', 'sScanEtf', 'sScanMin'].forEach(id => $(id).addEventListener('input', sScanRender));
+    ['sScanEtf', 'sScanMin'].forEach(id => $(id).addEventListener('input', sScanRender));
+    document.querySelectorAll('#sScanCard .seg2').forEach(g => g.addEventListener('click', e => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      $(g.dataset.for).value = b.dataset.v;
+      g.querySelectorAll('[data-v]').forEach(x => x.classList.toggle('on', x === b));
+      sScanRender();
+    }));
     $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanPick(b, b.dataset.add); });
   }
   sDbInit();
