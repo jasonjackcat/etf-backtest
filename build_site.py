@@ -79,8 +79,18 @@ def frame_to_data(df, code):
         return None
     d = {"px": [[i.strftime("%Y-%m-%d"), round(float(o), 4), round(float(c), 4)]
                 for i, o, c in zip(df.index, df["Open"], df["Close"])]}
+    # K 線用：最近 750 個交易日（約 3 年）的 [最高, 最低, 成交量(張)]，和 px 的最後幾筆對齊
+    if "High" in df and "Low" in df:
+        tail = df.iloc[-750:]
+        vol = tail["Volume"].fillna(0) if "Volume" in tail else None
+        d["hlv"] = [[round(float(h), 4), round(float(l), 4), int(round(float(v) / 1000)) if vol is not None else 0]
+                    for h, l, v in zip(tail["High"], tail["Low"], vol if vol is not None else [0] * len(tail))]
     div = df["Dividends"] if "Dividends" in df else None
     d["div"] = {i.strftime("%Y-%m-%d"): round(float(v), 4) for i, v in div.items() if v and v > 0} if div is not None else {}
+    # 最近 15 個交易日的成交量（張），只給掃描用（算 5 日、10 日均量），不寫進個股資料檔
+    if "Volume" in df:
+        tail = df["Volume"].fillna(0).iloc[-15:]
+        d["vol15"] = {i.strftime("%Y-%m-%d"): int(round(float(v) / 1000)) for i, v in tail.items()}
     sp = df["Stock Splits"] if "Stock Splits" in df else None
     splits = [[i.strftime("%Y-%m-%d"), round(float(v), 6)] for i, v in sp.items() if v and v > 0] if sp is not None else []
     if code in MANUAL_SPLITS:
@@ -157,13 +167,13 @@ def main():
     os.makedirs(os.path.join(OUT, "data"), exist_ok=True)
     groups = {}
     for c, d in data.items():
-        groups.setdefault(c[:3], {})[c] = d
+        groups.setdefault(c[:3], {})[c] = {k: v for k, v in d.items() if k != "vol15"}
     for g, items in groups.items():
         with open(os.path.join(OUT, "data", g + ".json"), "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
     index = {c: [d["name"], d["market"]] for c, d in sorted(data.items())}
 
-    # 掃描用小檔：每檔最近 15 個交易日的 [日期, 收盤, OSC]（OSC 用完整歷史計算，和網頁一樣是 12/26/9）
+    # 掃描用小檔：每檔最近 15 個交易日的 [日期, 收盤, OSC, 成交量(張)]（OSC 用完整歷史計算，和網頁一樣是 12/26/9）
     scan = {}
     for c, d in data.items():
         e12 = e26 = sig = None
@@ -178,15 +188,27 @@ def main():
             dif = e12 - e26
             sig = dif if len(rows) == 0 and sig == 0.0 and day == d["px"][0][0] else sig + 2 / 10 * (dif - sig)
             rows.append([day, cl, round(dif - sig, 5)])
-        scan[c] = rows[-15:]
+        vol = d.get("vol15") or {}
+        scan[c] = [r + [vol[r[0]]] if r[0] in vol else r for r in rows[-15:]]
     asof_scan = max(r[-1][0] for r in scan.values())
     with open(os.path.join(OUT, "data", "scan.json"), "w", encoding="utf-8") as f:
         json.dump({"asof": asof_scan, "rows": scan}, f, separators=(",", ":"))
     with open(os.path.join(OUT, "data", "index.json"), "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
 
+    # 個股詳細資料：三大法人、融資融券、月營收、財報（失敗不影響網站其他部分；SKIP_FUND=1 可略過）
+    fund = {}
+    if os.environ.get("SKIP_FUND") != "1":
+        try:
+            import fundamentals
+            days = [r[0] for r in data[ETFS[0]]["px"]]
+            fund = fundamentals.build(OUT, days, sorted(data), dt.datetime.now(TZ).date().isoformat()) or {}
+        except Exception as e:
+            print(f"籌碼／基本面資料失敗（網站其他部分照常）：{e}")
+
     asof = max(d["px"][-1][0] for d in data.values())
-    embed = {e: data[e] for e in ETFS}
+    embed = {e: {k: v for k, v in data[e].items() if k != "vol15"} for e in ETFS}
+    embed["_fund"] = fund
     embed["_remote"] = True
     embed["_asof"] = asof
     embed["_stocks"] = ["2330"]
