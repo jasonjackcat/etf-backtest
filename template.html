@@ -41,7 +41,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
 .acc b{color:var(--board-ink);font-weight:500}
 .acc .accNote{color:var(--board-muted);opacity:.8}
 .accbtn{font:inherit;font-size:12px;font-weight:500;color:var(--board);background:var(--board-hi);border:0;border-radius:99px;padding:4px 14px;cursor:pointer}
-.accbtn[data-act=logout]{background:transparent;color:var(--board-ink);border:1px solid var(--board-line)}
+.accbtn[data-act=logout],.accbtn.ghost{background:transparent;color:var(--board-ink);border:1px solid var(--board-line)}
 .login{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;background:var(--board-chip);border:1px solid var(--board-line);border-radius:10px}
 .login input{width:220px;max-width:100%;background:var(--board);color:var(--board-ink);border:1px solid var(--board-line)}
 .login input:focus-visible{outline:2px solid var(--board-hi);background:var(--board)}
@@ -206,6 +206,14 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <button type="button" class="linkbtn" id="lgReset">忘記密碼</button>
       <button type="button" class="linkbtn" id="lgClose">取消</button>
       <span class="lgmsg" id="lgMsg" aria-live="polite"></span>
+    </form>
+    <form class="login" id="pwBox" hidden>
+      <input type="password" id="pwOld" placeholder="目前的密碼" autocomplete="current-password" required aria-label="目前的密碼">
+      <input type="password" id="pwNew" placeholder="新密碼（至少 6 個字元）" autocomplete="new-password" required minlength="6" aria-label="新密碼">
+      <input type="password" id="pwNew2" placeholder="再輸入一次新密碼" autocomplete="new-password" required minlength="6" aria-label="再輸入一次新密碼">
+      <button type="submit" class="btn" id="pwGo">修改密碼</button>
+      <button type="button" class="linkbtn" id="pwClose">取消</button>
+      <span class="lgmsg" id="pwMsg" aria-live="polite"></span>
     </form>
     <div class="vhead" id="vEtfHead">
     <div class="eyebrow"><span class="dot"></span><b>ETF 跌深加碼回測</b><span id="dataRange"></span></div>
@@ -1575,7 +1583,7 @@ async function accWrite(extra) {
       accLast = key; ACC.data = body; lsSet(body); return true;
     } catch (e) {
       if (!(e && e.code === 'permission-denied')) throw e;
-      ACC.fbDenied = true; ACC.mode = 'local'; accBadge();   // 帳號沒開通：改存在瀏覽器
+      ACC.fbDenied = true; ACC.fbErr = 'permission-denied'; ACC.mode = 'local'; accBadge();   // 帳號沒開通：改存在瀏覽器
     }
   }
   if (ACC.mode === 'db' && ACC.doc) {
@@ -1648,7 +1656,12 @@ function fbBadge() {
   const u = ACC.fbUser;
   if (!FB) el.innerHTML = '<span>未登入</span><span class="accNote">設定記在這台裝置</span>';
   else if (!u) el.innerHTML = '<span class="accNote">設定記在這台裝置</span><button type="button" class="accbtn" data-act="login">登入</button>';
-  else el.innerHTML = `<span><b class="accName"></b></span><span class="accNote">${ACC.fbDenied ? '帳號尚未開通，設定記在這台裝置' : '設定存在雲端'}</span><button type="button" class="accbtn" data-act="logout">登出</button>`;
+  else {
+    const note = ACC.fbState === 'loading' ? '讀取雲端設定中…'
+      : ACC.fbDenied ? (ACC.fbErr === 'permission-denied' ? '帳號尚未開通，設定記在這台裝置' : '連不到雲端資料庫，設定記在這台裝置')
+      : '設定存在雲端';
+    el.innerHTML = `<span>已登入：<b class="accName"></b></span><span class="accNote">${note}</span><button type="button" class="accbtn ghost" data-act="pw">修改密碼</button><button type="button" class="accbtn" data-act="logout">登出</button>`;
+  }
   const nm = el.querySelector('.accName'); if (nm) nm.textContent = u ? u.email : '';
 }
 async function fbInit() {
@@ -1663,11 +1676,12 @@ async function fbInit() {
 }
 async function fbUser(u) {
   await accReady;
-  ACC.fbUser = u || null; ACC.fbDenied = false; ACC.fbRef = null;
+  ACC.fbUser = u || null; ACC.fbDenied = false; ACC.fbRef = null; ACC.fbErr = '';
   if (!u) { ACC.mode = 'local'; ACC.data = lsGet(); accApplyLoaded(); fbBadge(); return; }
+  ACC.fbState = 'loading'; fbBadge();   // 先顯示已登入，再讀雲端設定
   const ref = FB.F.doc(FB.db, 'users', u.uid);
   try {
-    const snap = await FB.F.getDoc(ref);
+    const snap = await Promise.race([FB.F.getDoc(ref), new Promise((_, rej) => setTimeout(() => rej({ code: 'timeout' }), 10000))]);
     ACC.mode = 'fb'; ACC.fbRef = ref;
     if (snap.exists()) ACC.data = snap.data();
     else {   // 第一次登入：把這台裝置上的設定搬到雲端
@@ -1676,8 +1690,10 @@ async function fbUser(u) {
       try { await FB.F.setDoc(ref, { ...accBody(), updatedAt: new Date().toISOString() }); } catch (e) {}
     }
   } catch (e) {
-    ACC.mode = 'local'; ACC.fbDenied = true; ACC.data = lsGet();
+    ACC.mode = 'local'; ACC.fbDenied = true; ACC.fbErr = (e && e.code) || 'unknown'; ACC.data = lsGet();
+    console.warn('讀取雲端設定失敗：', ACC.fbErr, e);
   }
+  ACC.fbState = 'done';
   accApplyLoaded(); fbBadge();
 }
 function fbMsg(t) { $('lgMsg').textContent = t; }
@@ -1691,9 +1707,37 @@ if (ALL._remote) {
   $('accBadge').addEventListener('click', e => {
     const b = e.target.closest('[data-act]'); if (!b || !FB) return;
     if (b.dataset.act === 'login') { $('loginBox').hidden = false; fbMsg(''); $('lgEmail').focus(); }
-    if (b.dataset.act === 'logout') FB.U.signOut(FB.auth);
+    if (b.dataset.act === 'logout') { $('pwBox').hidden = true; FB.U.signOut(FB.auth); }
+    if (b.dataset.act === 'pw') { $('pwBox').hidden = false; $('pwMsg').textContent = ''; $('pwOld').focus(); }
   });
   $('lgClose').addEventListener('click', () => { $('loginBox').hidden = true; });
+  $('pwClose').addEventListener('click', () => { $('pwBox').hidden = true; ['pwOld', 'pwNew', 'pwNew2'].forEach(id => $(id).value = ''); });
+  $('pwBox').addEventListener('submit', async e => {
+    e.preventDefault();
+    const u = FB && FB.auth.currentUser, msg = t => { $('pwMsg').textContent = t; };
+    if (!u) { msg('請先登入。'); return; }
+    const oldP = $('pwOld').value, n1 = $('pwNew').value, n2 = $('pwNew2').value;
+    if (n1.length < 6) { msg('新密碼至少要 6 個字元。'); return; }
+    if (n1 !== n2) { msg('兩次輸入的新密碼不一樣。'); return; }
+    if (n1 === oldP) { msg('新密碼和目前的密碼一樣。'); return; }
+    $('pwGo').disabled = true; msg('修改中…');
+    try {
+      const cred = FB.U.EmailAuthProvider.credential(u.email, oldP);
+      await FB.U.reauthenticateWithCredential(u, cred);   // 先確認目前的密碼
+      await FB.U.updatePassword(u, n1);
+      ['pwOld', 'pwNew', 'pwNew2'].forEach(id => $(id).value = '');
+      msg('密碼已經改好，下次登入請用新密碼。');
+      setTimeout(() => { $('pwBox').hidden = true; }, 3000);
+    } catch (err) {
+      const c = err && err.code;
+      msg(c === 'auth/invalid-credential' || c === 'auth/wrong-password' ? '目前的密碼不對。'
+        : c === 'auth/weak-password' ? '新密碼太簡單，請換一個。'
+        : c === 'auth/too-many-requests' ? '嘗試太多次，請稍後再試。'
+        : c === 'auth/network-request-failed' ? '網路連線失敗，請稍後再試。'
+        : '修改失敗，請稍後再試。');
+    }
+    $('pwGo').disabled = false;
+  });
   $('loginBox').addEventListener('submit', async e => {
     e.preventDefault();
     if (!FB) return;
