@@ -190,7 +190,10 @@ def main():
             rows.append([day, cl, round(dif - sig, 5)])
         vol = d.get("vol15") or {}
         scan[c] = [r + [vol[r[0]]] if r[0] in vol else r for r in rows[-15:]]
-    asof_scan = max(r[-1][0] for r in scan.values())
+    # 資料日期取「至少一半股票都有資料」的最新一天；Yahoo 有時只先回少數股票當天的資料
+    lasts = sorted((r[-1][0] for r in scan.values() if r), reverse=True)
+    asof_scan = lasts[len(lasts) // 2] if lasts else ""
+    scan = {c: [x for x in r if x[0] <= asof_scan] for c, r in scan.items()}
     with open(os.path.join(OUT, "data", "scan.json"), "w", encoding="utf-8") as f:
         json.dump({"asof": asof_scan, "rows": scan}, f, separators=(",", ":"))
     with open(os.path.join(OUT, "data", "index.json"), "w", encoding="utf-8") as f:

@@ -1132,6 +1132,12 @@ function sLoadScan() {
     .then(j => { S_SCAN = j; sScanRender(); return j; });
   return S_SCAN_P;
 }
+// 篩選基準日：至少一半股票都有資料的最新一天（避免少數股票先有當天資料，其他全被當成沒交易）
+function sScanRef() {
+  if (S_SCAN._ref) return S_SCAN._ref;
+  const a = Object.values(S_SCAN.rows).filter(r => r.length).map(r => r[r.length - 1][0]).sort().reverse();
+  return S_SCAN._ref = a.length ? a[a.length >> 1] : S_SCAN.asof;
+}
 function sScanRender() {
   const card = $('sScanCard'); if (!card) return;
   card.hidden = !S_REMOTE;
@@ -1146,9 +1152,10 @@ function sScanRender() {
   const v5 = +$('sScanV5').value || 0, v10 = +$('sScanV10').value || 0;   // 均量下限（張），空白＝不限
   const avgVol = (rows, n) => { const a = rows.slice(-n).map(r => r[3]).filter(v => v != null); return a.length === Math.min(n, rows.length) ? a.reduce((x, y) => x + y, 0) / a.length : null; };
   let noVol = 0;
-  const out = [];
-  for (const [code, rows] of Object.entries(S_SCAN.rows)) {
-    if (!rows.length || rows[rows.length - 1][0] !== S_SCAN.asof) continue;   // 最新交易日沒交易的不算
+  const out = [], ref = sScanRef();
+  for (const [code, rows0] of Object.entries(S_SCAN.rows)) {
+    const rows = rows0.filter(r => r[0] <= ref);   // 比基準日新的零星資料先不看
+    if (!rows.length || rows[rows.length - 1][0] !== ref) continue;   // 基準日沒交易的不算
     if (noEtf && code.startsWith('00')) continue;
     const info = (S_INDEX && S_INDEX[code]) || ['', ''];
     if (mkt && info[1] !== mkt) continue;
@@ -1177,7 +1184,7 @@ function sScanRender() {
     ? (a, b) => ((b.win && b.win.w != null ? b.win.w : -1) - (a.win && a.win.w != null ? a.win.w : -1)) || ((b.win ? b.win.n : 0) - (a.win ? a.win.n : 0))
     : (a, b) => a.lowp - b.lowp);
   const pending = out.filter(r => !r.win).map(r => r.code);
-  $('sScanAsof').textContent = `資料日期 ${S_SCAN.asof}`;
+  $('sScanAsof').textContent = `資料日期 ${ref}`;
   $('sScanCount').textContent = `符合 ${out.length} 檔` + (pending.length ? `・勝率計算中 ${out.length - pending.length}/${out.length}` : '')
     + (noVol ? `・${noVol} 檔還沒有成交量資料` : '');
   tb.innerHTML = out.map(r => {
