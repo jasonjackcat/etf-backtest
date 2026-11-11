@@ -77,8 +77,8 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
 .body{padding-block:28px 56px}
 .grid{display:grid;grid-template-columns:304px minmax(0,1fr);gap:24px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 18px 18px;display:flex;flex-direction:column;position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
-@media (max-width:900px){.panel{position:static}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 18px 18px;display:flex;flex-direction:column;position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);max-height:calc(100vh - 32px - env(safe-area-inset-top,0px));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+@media (max-width:900px){.panel{position:static;max-height:none;overflow:visible}}
 .sec{display:flex;flex-direction:column;gap:10px;padding-top:16px}
 .sec + .sec{border-top:1px solid var(--line);margin-top:16px}
 .sec h2{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--ink);letter-spacing:.12em;margin:0}
@@ -137,6 +137,9 @@ td b{font-family:var(--f-num);font-weight:600}
 .p-div{background:var(--div-soft);color:var(--div)}
 .p-today{background:var(--div-soft);color:var(--div);border:1px solid var(--div)}
 tr.hot td{background:var(--div-soft)}
+.pickbox{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 0;white-space:normal}
+.pickbox select{width:auto;max-width:100%}
+tr.pick td{background:var(--surface-2)}
 .p-split{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
 tr.cur td{background:var(--accent-soft)!important}
 tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
@@ -965,11 +968,27 @@ function sScanRender() {
     return `<tr><td class="l"><b>${r.code}</b> ${r.name}</td><td class="l">${r.mkt}</td><td class="n">${r.close.toFixed(2)}</td><td class="n down">${r.lowp.toFixed(2)}%</td><td class="l n">${r.lowd}</td><td class="n">${r.nowp.toFixed(2)}%</td><td>${inW ? '<span class="hint">已在自選</span>' : `<button type="button" class="linkbtn" data-add="${r.code}">加入自選</button>`}</td></tr>`;
   }).join('') || `<tr><td class="l" colspan="7">最新交易日沒有個股符合目前的進場條件。可以把左邊的「低點深度」調小試試。</td></tr>`;
 }
-async function sScanAdd(code) {
+function sScanPick(btn, code) {
+  document.querySelectorAll('#sScanT tr.pick').forEach(r => r.remove());
+  const tr = btn.closest('tr');
+  const opts = (sWatch.length < 10 ? [`<option value="">加到空的欄位（第 ${sWatch.length + 1} 欄）</option>`] : [])
+    .concat(sWatch.map((c, i) => `<option value="${i}">取代第 ${i + 1} 欄：${c} ${sName(c) || ''}</option>`));
+  const row = document.createElement('tr');
+  row.className = 'pick';
+  row.innerHTML = `<td colspan="7"><div class="pickbox"><span>把 <b>${code}</b> 加入自選股：</span><select aria-label="加入的位置">${opts.join('')}</select><button type="button" class="btn" data-ok>確定</button><button type="button" class="linkbtn" data-cancel>取消</button></div></td>`;
+  tr.after(row);
+  row.querySelector('[data-cancel]').onclick = () => row.remove();
+  row.querySelector('[data-ok]').onclick = () => { const v = row.querySelector('select').value; row.remove(); sScanAdd(code, v === '' ? -1 : +v); };
+  row.querySelector('select').focus();
+}
+async function sScanAdd(code, slot = -1) {
   const st = $('sWStatus');
   if (sWatch.includes(code)) return;
-  if (sWatch.length >= 10) { st.dataset.msg = 1; st.textContent = '自選股已經 10 檔，請先清掉一欄再加入。'; return; }
-  sWatch = sWatch.concat(code);
+  if (slot < 0 && sWatch.length >= 10) { st.dataset.msg = 1; st.textContent = '自選股已經 10 檔，請選一檔取代。'; return; }
+  const old = slot >= 0 ? sWatch[slot] : null;
+  sWatch = slot >= 0 ? sWatch.map((c, i) => i === slot ? code : c) : sWatch.concat(code);
+  st.dataset.msg = 1; st.textContent = old ? `已用 ${code} 取代 ${old}。` : `已加入 ${code}。`;
+  setTimeout(() => { delete st.dataset.msg; sWatchUi(); }, 6000);
   sFillInputs();
   try { await accWrite(); } catch (e) {}
   sApplyWatch(sWatch);
@@ -1391,7 +1410,7 @@ function sInit() {
     $('sWHint').textContent = '每個人的清單和設定都記在自己這台裝置的瀏覽器。輸入任何上市櫃股票或 ETF 代號（空白的欄位不用填），按儲存後就會自動下載資料。';
     sLoadIndex().then(() => { sApplyWatch(sWatch); sWatchUi(); sLoadScan(); });
     ['sScanMkt', 'sScanEtf', 'sScanMin'].forEach(id => $(id).addEventListener('input', sScanRender));
-    $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanAdd(b.dataset.add); });
+    $('sScanT').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) sScanPick(b, b.dataset.add); });
   }
   sDbInit();
 }
