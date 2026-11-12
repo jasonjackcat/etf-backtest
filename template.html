@@ -591,7 +591,8 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
   <div class="card" id="mMon" hidden>
     <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
-    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。價格請自己填，網站不會預先帶入。</p>
+    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。進場價請自己填；停利、停損價與到期日會依你在「個股」分頁設定的回測條件自動算好，可以再改。</p>
+    <p class="hint" id="monRule" style="margin:0 0 10px"></p>
     <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
       <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><input type="number" id="monEntry" step="0.01" min="0"></div>
@@ -1307,7 +1308,7 @@ function sCompare(c) {
   for (const tk of sList()) {
     const r = sRun(tk, { ...c, tk }); if (!r) continue; chip[tk] = r.ret;
     const n = r.trades.length;
-    rows.push(`<tr class="${tk === sTk ? 'cur' : ''}"><td class="l"><b>${tk}</b> ${sName(tk)}</td><td class="n">${n}${r.open ? '＋1' : ''}</td><td class="n">${n ? Math.round(r.winRate * 100) + '%' : '—'}</td><td class="n ${cls(r.avgRet || 0)}">${n ? pct(r.avgRet) : '—'}</td><td class="n ${cls(r.ret)}">${pct(r.ret)}</td><td class="n ${cls(r.bhRet)}">${pct(r.bhRet)}</td><td class="n">${pct(r.mdd)}</td><td class="n">${pct(r.bhMdd)}</td><td class="n">${Math.round(r.exposure * 100)}%</td><td>${tk === sTk ? '' : `<button type="button" class="linkbtn" data-tk="${tk}">查看</button>`}</td></tr>`);
+    rows.push(`<tr class="${tk === sTk ? 'cur' : ''}"><td class="l"><button type="button" class="sdlink" data-detail="${tk}"><b>${tk}</b> ${sName(tk)}</button></td><td class="n">${n}${r.open ? '＋1' : ''}</td><td class="n">${n ? Math.round(r.winRate * 100) + '%' : '—'}</td><td class="n ${cls(r.avgRet || 0)}">${n ? pct(r.avgRet) : '—'}</td><td class="n ${cls(r.ret)}">${pct(r.ret)}</td><td class="n ${cls(r.bhRet)}">${pct(r.bhRet)}</td><td class="n">${pct(r.mdd)}</td><td class="n">${pct(r.bhMdd)}</td><td class="n">${Math.round(r.exposure * 100)}%</td><td>${tk === sTk ? '' : `<button type="button" class="linkbtn" data-tk="${tk}">查看</button>`}</td></tr>`);
   }
   $('sCmp').tBodies[0].innerHTML = rows.join('');
   for (const [tk, v] of Object.entries(chip)) { const el = document.querySelector(`#sBar [data-tk="${tk}"] .ir`); if (el) el.innerHTML = `<small>策略</small><span class="${cls(v)}">${pct(v, 0)}</span>`; }
@@ -1989,15 +1990,47 @@ $('mSmartT').addEventListener('click', e => {
 });
 
 // ── 監控單：網頁設定進場／停利／停損價與到期日，下單工具觸價就市價成交 ──
-let monCode = '';
+let monCode = '', monRuleCfg = null;
+// 台股升降單位：股票 <10 0.01、<50 0.05、<100 0.1、<500 0.5、<1000 1、以上 5；ETF <50 0.01、以上 0.05
+function monTick(px, code) {
+  if (String(code).startsWith('00')) return px < 50 ? 0.01 : 0.05;
+  return px < 10 ? 0.01 : px < 50 ? 0.05 : px < 100 ? 0.1 : px < 500 ? 0.5 : px < 1000 ? 1 : 5;
+}
+function monRound(v, code, up) {
+  const t = monTick(v, code), n = v / t, r = up ? Math.ceil(n - 1e-9) : Math.floor(n + 1e-9);
+  return +(r * t).toFixed(2);
+}
+// 從今天往後數 n 個交易日（跳過週末；國定假日不在網頁上，可能差一兩天）
+function monAddTradeDays(n) {
+  const d = new Date(Date.now() + 28800000); d.setUTCHours(0, 0, 0, 0);
+  for (let k = 0; k < n;) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w !== 0 && w !== 6) k++; }
+  return d.toISOString().slice(0, 10);
+}
+// 輸入進場價 → 依回測條件算停利、停損價（使用者自己改過的欄位就不再覆蓋）
+function monAuto() {
+  const e = +$('monEntry').value, c = monRuleCfg;
+  if (!c || !(e > 0)) return;
+  if (c.tp && !$('monTp').dataset.manual) $('monTp').value = monRound(e * (1 + c.tp / 100), monCode, true);
+  if (c.sl && !$('monSl').dataset.manual) $('monSl').value = monRound(e * (1 - c.sl / 100), monCode, false);
+}
+$('monEntry').addEventListener('input', monAuto);
+['monTp', 'monSl'].forEach(id => $(id).addEventListener('input', () => { $(id).dataset.manual = $(id).value ? '1' : ''; if (!$(id).value) monAuto(); }));
 function monOpen(code) {
   const x = smartList().find(s => s.code === code); if (!x || !ordReady()) return;
   monCode = code;
   // 價格不預先填：進場、停利、停損都由使用者自己決定
   $('monName').textContent = `${code} ${x.name || ''}`;
   $('monQty').value = 1;
-  ['monEntry', 'monTp', 'monSl'].forEach(id => { $(id).value = ''; $(id).placeholder = '請自己填'; });
-  $('monUntil').value = new Date(Date.now() + 28800000 + 30 * 86400000).toISOString().slice(0, 10);
+  ['monEntry', 'monTp', 'monSl'].forEach(id => { $(id).value = ''; $(id).placeholder = '請自己填'; delete $(id).dataset.manual; });
+  const c = sCfg(), ok = !c.missing.length;
+  monRuleCfg = ok ? { tp: c.tp, sl: c.sl, days: c.maxDays } : null;
+  if (monRuleCfg) {
+    if (c.tp) $('monTp').placeholder = `輸入進場價後自動算（+${c.tp}%）`;
+    if (c.sl) $('monSl').placeholder = `輸入進場價後自動算（−${c.sl}%）`;
+  }
+  $('monRule').textContent = !ok ? '「個股」分頁的回測條件還沒設定完整，停利、停損價與到期日請自己填。'
+    : `依你的回測條件：${c.tp ? `停利 +${c.tp}%` : '沒設停利（請自己填）'}、${c.sl ? `停損 −${c.sl}%` : '沒設停損（請自己填）'}、${c.maxDays ? `最長持有 ${c.maxDays} 個交易日` : '沒設持有天數（預設 30 天）'}。停利、停損以進場價計算，價格依台股跳動單位取整。`;
+  $('monUntil').value = ok && c.maxDays ? monAddTradeDays(c.maxDays) : new Date(Date.now() + 28800000 + 30 * 86400000).toISOString().slice(0, 10);
   $('monExp').value = 'sell'; $('monAck').checked = false; $('monMsg').textContent = '';
   $('mMon').hidden = false; $('mMon').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
