@@ -215,6 +215,11 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .sdk .s{font-size:12px;color:var(--faint);font-family:var(--f-num);line-height:1.5}
 .sdchart{position:relative;height:220px;margin:4px 0 10px}
 .sdnav{position:sticky;top:-24px;background:var(--surface);padding:8px 0;z-index:1;border-bottom:1px solid var(--line);margin-top:10px}
+.sdsec[hidden]{display:none}
+.sdk-px{position:relative;height:340px;margin:4px 0 0}
+.sdk-vol{position:relative;height:100px;margin:2px 0 10px}
+.sdleg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin:0 0 6px}
+.sdleg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -586,14 +591,14 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
   <div class="card" id="mMon" hidden>
     <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
-    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:25 盯盤（下單工具要開著）。價格請自己填，網站不會預先帶入。</p>
+    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。價格請自己填，網站不會預先帶入。</p>
     <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
       <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><input type="number" id="monEntry" step="0.01" min="0"></div>
       <div class="f"><label for="monTp">停利價（現價 ≥ 這個就賣）</label><input type="number" id="monTp" step="0.01" min="0"></div>
       <div class="f"><label for="monSl">停損價（現價 ≤ 這個就賣）</label><input type="number" id="monSl" step="0.01" min="0"></div>
       <div class="f"><label for="monUntil">監控到期日</label><input type="date" id="monUntil"></div>
-      <div class="f"><label for="monExp">到期時還持有</label><select id="monExp"><option value="sell">到期日 13:20 市價賣出</option><option value="stop">只停止監控（股票留著）</option></select></div>
+      <div class="f"><label for="monExp">到期時還持有</label><select id="monExp"><option value="sell">到期日 13:15 市價賣出</option><option value="stop">只停止監控（股票留著）</option></select></div>
     </div>
     <label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="monAck" style="width:auto"> 我了解觸價後下單工具會<b>自動</b>用市價買進／賣出，不會再問我（仍受工具的張數、金額、每日上限限制）。</label>
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
@@ -632,7 +637,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <button type="button" class="linkbtn" id="sdClose">關閉（Esc）</button>
     </div>
     <div class="zbar sdnav" id="sdNav">
-      <button type="button" data-go="sdInst">三大法人</button><button type="button" data-go="sdMg">融資融券</button><button type="button" data-go="sdRev">月營收</button><button type="button" data-go="sdQ">EPS／獲利</button><button type="button" data-go="sdDiv">股利</button>
+      <button type="button" data-go="sdK" class="on">日 K</button><button type="button" data-go="sdInst">三大法人</button><button type="button" data-go="sdMg">融資融券</button><button type="button" data-go="sdRev">月營收</button><button type="button" data-go="sdQ">EPS／獲利</button><button type="button" data-go="sdDiv">股利</button>
     </div>
     <div id="sdBody"></div>
     <p class="hint" style="margin-top:18px">資料來源：證交所、櫃買中心盤後公告（三大法人、融資融券），公開資訊觀測站（月營收、綜合損益表），股利來自 yfinance。每個交易日晚上更新，可能有延遲或錯誤，以官方公告為準。本區只整理數據，不構成投資建議。</p>
@@ -2195,7 +2200,7 @@ $('pnlT').addEventListener('click', e => {   // 點每週／每月那一列 → 
 $('mOrdersT').addEventListener('click', e => { const b = e.target.closest('[data-ocancel]'); if (b) ordCancel(b.dataset.ocancel); });
 
 // ── 個股詳細資料：三大法人、融資融券、月營收、EPS／獲利、股利（GitHub 版；資料在 data/f<代號前3碼>.json） ──
-const SD = { groups: {}, charts: [], code: '' };
+const SD = { groups: {}, charts: [], code: '', tab: 'sdK', kn: 120, make: {}, built: {}, kC: null, kV: null };
 async function sdData(code) {
   const g = code.slice(0, 3);
   if (!(g in SD.groups)) {
@@ -2203,7 +2208,7 @@ async function sdData(code) {
   }
   return (SD.groups[g] && SD.groups[g][code]) || null;
 }
-function sdClose() { $('sdDlg').hidden = true; document.body.style.overflow = ''; SD.charts.forEach(c => c.destroy()); SD.charts = []; }
+function sdClose() { $('sdDlg').hidden = true; document.body.style.overflow = ''; SD.charts.forEach(c => c.destroy()); SD.charts = []; SD.kC = SD.kV = null; }
 async function sdOpen(code) {
   if (!S_REMOTE || !code) return;
   SD.code = code;
@@ -2212,12 +2217,13 @@ async function sdOpen(code) {
   $('sdBody').innerHTML = '';
   $('sdDlg').hidden = false; document.body.style.overflow = 'hidden';
   $('sdDlg').scrollTop = 0;
+  SD.tab = 'sdK'; sdNavMark();
   const [f] = await Promise.all([sdData(code), sEnsure([code]).catch(() => false)]);
   if (SD.code !== code || $('sdDlg').hidden) return;
   sdRender(code, f || {});
 }
 function sdRender(code, f) {
-  SD.charts.forEach(c => c.destroy()); SD.charts = [];
+  SD.charts.forEach(c => c.destroy()); SD.charts = []; SD.kC = SD.kV = null;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const n0 = v => v == null ? '—' : Math.round(v).toLocaleString('zh-TW');
   const sg = v => v == null ? '—' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('zh-TW');
@@ -2234,6 +2240,16 @@ function sdRender(code, f) {
   $('sdTitle').innerHTML = `${esc(code)} ${esc(name)}${px}`;
   $('sdSub').textContent = [fd.inst ? `法人／信用至 ${fd.inst}` : '', fd.rev ? `月營收至 ${fd.rev}` : '', fd.q ? `財報至 ${fd.q}` : ''].filter(Boolean).join('・') || '資料尚未建立';
   const out = [];
+
+  // 日 K（價格已還原分割、紅漲綠跌）＋ 均線 ＋ 成交量
+  const KP = sHas(code) ? sLoad(code).px : [];
+  if (KP.length) {
+    out.push(`<section class="sdsec" id="sdK"><h3>日 K 線</h3>
+      <div class="zbar" id="sdKRange" style="margin-top:6px">${[[60, '3 個月'], [120, '6 個月'], [250, '1 年'], [500, '2 年']].map(([n, t]) => `<button type="button" data-kn="${n}"${n === SD.kn ? ' class="on"' : ''}>${t}</button>`).join('')}</div>
+      <div class="sdleg"><span><i style="background:#64748b"></i>MA20</span><span><i style="background:#c2621b"></i>MA60</span><span><i style="background:#7c3aed"></i>MA120</span><span>下方：成交量（張）與 5 日均量</span></div>
+      <div class="sdk-px"><canvas id="sdcK"></canvas></div><div class="sdk-vol"><canvas id="sdcKV"></canvas></div>
+      <p class="cap">價格已還原分割、不含息；滑鼠移到 K 棒上看當天實際的開高低收。</p></section>`);
+  } else out.push(`<section class="sdsec" id="sdK"><h3>日 K 線</h3><p class="hint">沒有股價資料。</p></section>`);
 
   // 三大法人（張）
   const I = f.inst || [];
@@ -2309,26 +2325,79 @@ function sdRender(code, f) {
   } else out.push(`<section class="sdsec" id="sdDiv"><h3>現金股利</h3><p class="hint">${sHas(code) ? '近年沒有除息紀錄。' : '沒有資料。'}</p></section>`);
 
   $('sdBody').innerHTML = out.join('');
+  SD.make = {};
 
   // 圖表
   const css = getComputedStyle(document.documentElement), C = n => css.getPropertyValue(n).trim();
   const up = C('--up'), down = C('--down'), mu = C('--muted'), line = C('--line'), acc = C('--accent') || '#2f6fd6';
   const base = { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { color: mu, boxWidth: 12 } } },
     scales: { x: { ticks: { color: mu }, grid: { display: false } }, y: { ticks: { color: mu }, grid: { color: line } } } };
+  SD.make.sdK = () => sdDrawK(KP);
+  SD.make.sdInst = () => {
   if (I.length && $('sdcInst')) SD.charts.push(new Chart($('sdcInst'), { type: 'bar', data: { labels: I.map(r => md(r[0])),
     datasets: [{ label: '外資', data: I.map(r => r[1]), backgroundColor: acc }, { label: '投信', data: I.map(r => r[2]), backgroundColor: C('--div') || '#a5660c' }, { label: '自營商', data: I.map(r => r[3]), backgroundColor: mu }] },
     options: { ...base, scales: { x: { ...base.scales.x, stacked: true }, y: { ...base.scales.y, stacked: true } } } }));
+  };
+  SD.make.sdRev = () => {
   if (R.length && $('sdcRev')) SD.charts.push(new Chart($('sdcRev'), { data: { labels: R.map(r => r[0].slice(2)),
     datasets: [{ type: 'bar', label: '營收（億）', data: R.map(r => +(r[1] / 1e5).toFixed(2)), backgroundColor: acc, yAxisID: 'y', order: 2 },
       { type: 'line', label: '年增率 %', data: R.map(r => r[2]), borderColor: up, backgroundColor: up, pointRadius: 2, yAxisID: 'y1', order: 1 }] },
     options: { ...base, scales: { x: base.scales.x, y: { ...base.scales.y, position: 'left' }, y1: { position: 'right', ticks: { color: mu, callback: v => v + '%' }, grid: { display: false } } } } }));
+  };
+  SD.make.sdQ = () => {
   if (Q.length && $('sdcQ')) SD.charts.push(new Chart($('sdcQ'), { type: 'bar', data: { labels: Q.map(r => r[0]),
     datasets: [{ label: 'EPS（元）', data: Q.map(r => r[1]), backgroundColor: Q.map(r => (r[1] || 0) >= 0 ? up : down) }] }, options: base }));
+  };
+  SD.built = {};
+  sdShow(SD.tab || 'sdK');
+}
+// 分頁：只顯示選到的那一塊，圖表第一次顯示時才畫
+function sdNavMark() { document.querySelectorAll('#sdNav [data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === SD.tab)); }
+function sdShow(id) {
+  SD.tab = id; sdNavMark();
+  document.querySelectorAll('#sdBody .sdsec').forEach(x => { x.hidden = x.id !== id; });
+  if (!SD.built[id] && SD.make && SD.make[id]) { SD.built[id] = true; SD.make[id](); }
+}
+// 日 K：最近 SD.kn 個交易日的 K 棒、MA20／60／120、成交量與 5 日均量
+function sdDrawK(KP) {
+  if (!KP.length || !$('sdcK')) return;
+  if (SD.kC) { SD.kC.destroy(); SD.charts = SD.charts.filter(c => c !== SD.kC); }
+  if (SD.kV) { SD.kV.destroy(); SD.charts = SD.charts.filter(c => c !== SD.kV); }
+  const S = KP.slice(-SD.kn), labels = S.map(x => x.d);
+  const cs = getComputedStyle(document.documentElement), C = n => cs.getPropertyValue(n).trim();
+  const up = C('--up'), dn = C('--down'), mu = C('--muted'), line = C('--line'), acc = C('--accent') || '#2f6fd6';
+  const isUp = x => x.c >= x.o, col = S.map(x => isUp(x) ? up : dn);
+  const raw = (x, v) => (v * x.f).toFixed(2);
+  const fade = (c, a) => { const m = c.match(/^#([0-9a-f]{6})$/i); if (!m) return c; const n = parseInt(m[1], 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const xs = { ticks: { color: mu, maxTicksLimit: 8, maxRotation: 0, callback: function (v) { return String(this.getLabelForValue(v)).slice(2); } }, grid: { display: false }, offset: true };
+  SD.kC = new Chart($('sdcK'), {
+    data: { labels, datasets: [
+      { type: 'bar', data: S.map(x => [x.l, x.h]), backgroundColor: col, barPercentage: 0.12, categoryPercentage: 1, grouped: false, label: 'K', order: 3 },
+      { type: 'bar', data: S.map(x => { const a = Math.min(x.o, x.c), b = Math.max(x.o, x.c); return [a, b > a ? b : a + (x.c || 1) * 0.0008]; }), backgroundColor: col, barPercentage: 0.7, categoryPercentage: 1, grouped: false, label: '實體', order: 2 },
+      { type: 'line', data: S.map(x => x.ma20), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0, tension: 0.25, spanGaps: true, label: 'MA20', order: 1 },
+      { type: 'line', data: S.map(x => x.ma60), borderColor: '#c2621b', borderWidth: 1.2, pointRadius: 0, tension: 0.25, spanGaps: true, label: 'MA60', order: 1 },
+      { type: 'line', data: S.map(x => x.ma120), borderColor: '#7c3aed', borderWidth: 1.2, pointRadius: 0, tension: 0.25, spanGaps: true, label: 'MA120', order: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false, axis: 'x' },
+      plugins: { legend: { display: false }, tooltip: { filter: it => it.datasetIndex !== 1 && it.parsed.y != null, callbacks: {
+        label: c => { const x = S[c.dataIndex]; if (c.datasetIndex === 0) return `開 ${raw(x, x.o)}　高 ${raw(x, x.h)}　低 ${raw(x, x.l)}　收 ${raw(x, x.c)}`; return `${c.dataset.label} ${raw(x, c.parsed.y)}`; } } } },
+      scales: { x: { ...xs, ticks: { display: false } }, y: { position: 'right', afterFit: a => { a.width = 56; }, ticks: { color: mu }, grid: { color: line } } } } });
+  const hasV = S.some(x => x.v != null);
+  $('sdcKV').parentElement.hidden = !hasV;
+  SD.kV = hasV ? new Chart($('sdcKV'), {
+    data: { labels, datasets: [
+      { type: 'bar', data: S.map(x => x.v), backgroundColor: S.map(x => fade(isUp(x) ? up : dn, 0.45)), barPercentage: 0.8, categoryPercentage: 1, label: '成交量', order: 2 },
+      { type: 'line', data: S.map(x => x.vma5), borderColor: acc, borderWidth: 1.2, pointRadius: 0, tension: 0.25, spanGaps: true, label: '5 日均量', order: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { filter: it => it.parsed.y != null, callbacks: { label: c => `${c.dataset.label} ${Math.round(c.parsed.y).toLocaleString('zh-TW')} 張` } } },
+      scales: { x: xs, y: { position: 'right', min: 0, afterFit: a => { a.width = 56; }, ticks: { color: mu, maxTicksLimit: 3, callback: v => v >= 1000 ? (v / 1000) + 'k' : v }, grid: { color: line } } } } }) : null;
+  SD.charts.push(SD.kC); if (SD.kV) SD.charts.push(SD.kV);
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-detail]'); if (b) { e.preventDefault(); sdOpen(b.dataset.detail); return; }
   if (e.target === $('sdDlg')) sdClose();
-  const g = e.target.closest('#sdNav [data-go]'); if (g) { const t = $(g.dataset.go); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  const g = e.target.closest('#sdNav [data-go]'); if (g) { sdShow(g.dataset.go); return; }
+  const kn = e.target.closest('#sdKRange [data-kn]');
+  if (kn) { SD.kn = +kn.dataset.kn; document.querySelectorAll('#sdKRange [data-kn]').forEach(b => b.classList.toggle('on', b === kn)); sdDrawK(sHas(SD.code) ? sLoad(SD.code).px : []); }
 });
 $('sdClose').addEventListener('click', sdClose);
 $('sDetailBtn').addEventListener('click', () => sdOpen(sTk));
