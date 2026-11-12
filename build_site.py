@@ -29,6 +29,8 @@ PREV_URL = os.environ.get("PREV_URL", "https://jasonjackcat.github.io/etf-backte
 LIMIT = int(os.environ.get("LIMIT", "0"))
 CHUNK = 150
 TZ = dt.timezone(dt.timedelta(hours=8))
+# 證交所／櫃買中心當日行情 {代號: (日期, 開, 高, 低, 收, 成交股數)}，用來補 Yahoo 還沒給的最新一天
+OFFICIAL = {}
 
 
 def get_json(url, timeout=60):
@@ -36,13 +38,58 @@ def get_json(url, timeout=60):
     return json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8"))
 
 
+def official_quote(r, keys):
+    """官方行情一列 → (YYYY-MM-DD, 開, 高, 低, 收, 成交股數)；沒成交或格式不對就回 None。"""
+    try:
+        roc = str(r.get("Date", "")).strip()
+        day = f"{int(roc[:-4]) + 1911}-{roc[-4:-2]}-{roc[-2:]}"
+        o, h, l, c, v = (float(str(r.get(k, "")).replace(",", "").strip()) for k in keys)
+    except (ValueError, TypeError):
+        return None
+    if min(o, h, l, c) <= 0 or v <= 0:
+        return None
+    return (day, o, h, l, c, v)
+
+
+def fill_official(data):
+    """Yahoo 缺最新一天時，用證交所／櫃買中心當日行情補上。
+    只補「剛好少一天」的：該檔最後一筆必須是官方日期的前一個交易日，否則補了會跳過中間的日子。"""
+    days = sorted({row[0] for d in data.values() for row in d["px"]})
+    now = dt.datetime.now(TZ)
+    n = 0
+    for c, d in data.items():
+        q = OFFICIAL.get(c)
+        if not q or not d.get("px"):
+            continue
+        day, o, h, l, cl, v = q
+        if day == now.date().isoformat() and now.time() < dt.time(14, 30):
+            continue
+        last = d["px"][-1][0]
+        if day <= last:
+            continue
+        prev = [x for x in days if x < day]
+        if not prev or prev[-1] != last:
+            continue
+        d["px"].append([day, round(o, 4), round(cl, 4)])
+        if "hlv" in d:
+            d["hlv"].append([round(h, 4), round(l, 4), int(round(v / 1000))])
+            d["hlv"] = d["hlv"][-750:]
+        if "vol15" in d:
+            d["vol15"][day] = int(round(v / 1000))
+            d["vol15"] = dict(sorted(d["vol15"].items())[-15:])
+        n += 1
+    print(f"用證交所／櫃買中心行情補上最新一天：{n} 檔")
+
+
 def universe():
     """{代號: (名稱, 市場, yfinance 後綴)}，只留普通股（4 碼數字）與 ETF（00 開頭）。"""
     ok = re.compile(r"^(\d{4}|00\d{2,4}[A-Z]?)$")
     out = {}
-    srcs = [("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", "Code", "Name", "上市", ".TW"),
-            ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", "SecuritiesCompanyCode", "CompanyName", "上櫃", ".TWO")]
-    for url, kc, kn, mkt, suf in srcs:
+    srcs = [("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", "Code", "Name", "上市", ".TW",
+             ("OpeningPrice", "HighestPrice", "LowestPrice", "ClosingPrice", "TradeVolume")),
+            ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", "SecuritiesCompanyCode", "CompanyName", "上櫃", ".TWO",
+             ("Open", "High", "Low", "Close", "TradingShares"))]
+    for url, kc, kn, mkt, suf, qk in srcs:
         for attempt in range(3):
             try:
                 rows = get_json(url)
@@ -56,6 +103,9 @@ def universe():
             code = str(r.get(kc, "")).strip()
             if ok.match(code) and code not in out:
                 out[code] = (str(r.get(kn, "")).strip(), mkt, suf)
+                q = official_quote(r, qk)
+                if q:
+                    OFFICIAL[code] = q
     for e in ETFS:   # 確保 7 檔 ETF 一定在
         out.setdefault(e, (e, "上市", ".TW"))
     return out
@@ -154,6 +204,8 @@ def main():
         if c in prev_groups[g]:
             data[c] = prev_groups[g][c]
     print(f"有資料 {len(data)} 檔；這次沒抓到 {len(missing)} 檔，其中沿用上一版 {sum(1 for c in missing if c in data)} 檔")
+
+    fill_official(data)
 
     for c, d in data.items():
         nm, mkt, _ = uni.get(c, (c, "", ""))
