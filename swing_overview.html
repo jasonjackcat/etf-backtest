@@ -96,7 +96,7 @@ h2.fold button:hover{border-color:var(--acc);color:var(--acc)}
 .faq dt{font-weight:700;margin-top:10px}.faq dd{margin:2px 0 0 0;color:var(--mut)}
 @media (max-width:640px){h2{flex-wrap:wrap;row-gap:0}h2 .hint{flex-basis:100%;padding-left:14px}main{padding:16px 12px 40px}.panel{padding:14px 14px;border-radius:12px}h1{font-size:22px}.decide,.big{font-size:22px}#tmr{grid-template-columns:1fr}}
 </style></head><body><main>
-<header class="hero"><div><div class="eyebrow">波段選股・紙上模擬</div><h1>選股總覽</h1></div><div class="chips"><span class="chip">最新選股日 <b>2026-11-17</b></span><span class="chip">網頁產生 <b>2026-11-18 13:28</b></span></div></header>
+<header class="hero"><div><div class="eyebrow">波段選股・紙上模擬</div><h1>選股總覽</h1></div><div class="chips"><span class="chip">最新選股日 <b>2026-11-17</b></span><span class="chip">網頁產生 <b>2026-11-18 14:12</b></span></div></header>
 <details id="guide" class="guide"><summary>第一次使用？看這裡：名單怎麼用</summary><div class="gbody">
 <h3>這份名單是什麼</h3>
 <p>電腦模型每天收盤後，從約 2,000 檔上市櫃股票裡，挑出「接下來 10 個交易日最可能漲贏其他股票」的幾檔排成名單。</p>
@@ -145,8 +145,8 @@ h2.fold button:hover{border-color:var(--acc);color:var(--acc)}
 <div class="bar"><span>顯示 <span class="seg" id="fy"></span></span></div>
 <div class="wrap"><table id="hist"><thead><tr id="hh"></tr></thead><tbody id="hb"></tbody></table></div>
 </div></section>
-<section class="panel"><h2>各組合總覽 <span class="hint">點一列看明細</span></h2>
-<div class="wrap"><table id="sum"><thead><tr><th class="l">條件</th><th class="l">停損</th><th>每天檔數</th><th>筆數</th><th>已出場</th><th>勝率</th><th>已出場平均</th><th>已實現損益</th><th>持有中</th><th>未實現損益</th><th>合計損益</th><th>占用資金</th></tr></thead><tbody id="sb"></tbody></table></div></section>
+<section class="panel"><h2>各組合總覽 <span class="hint">點一列看明細；總報酬% ＝ 合計損益 ÷ 最高同時占用資金（要準備這麼多錢才跑得出這個結果）</span></h2>
+<div class="wrap"><table id="sum"><thead><tr><th class="l">條件</th><th class="l">停損</th><th>每天檔數</th><th>筆數</th><th>已出場</th><th>勝率</th><th>已出場平均</th><th>已實現損益</th><th>持有中</th><th>未實現損益</th><th>合計損益</th><th title="合計損益 ÷ 最高同時占用資金">總報酬%</th><th title="同一時間最多押在股票上的錢（買價 × 1000 的合計）">最高占用資金</th><th>目前占用資金</th></tr></thead><tbody id="sb"></tbody></table></div></section>
 <section class="panel"><h2 id="dt">進出場明細</h2>
 <div class="cards" id="cards"></div>
 <div class="bar">
@@ -192,9 +192,15 @@ let sortK = "買進日", sortD = -1;
 function stat(rs){
   const done = rs.filter(r => r["狀態"] !== "持有中"), open = rs.filter(r => r["狀態"] === "持有中");
   const sum = a => a.reduce((s, r) => s + (r["損益元"] || 0), 0);
+  // 最高同時占用資金：買進日 +買價×1000，出場日之後才釋放（持有中一直占用）
+  const ev = [];
+  rs.forEach(r => { const c = (r["買價"] || 0) * 1000; ev.push([String(r["買進日"]), 0, c]); if (r["狀態"] !== "持有中" && r["出場日"]) ev.push([String(r["出場日"]), 1, -c]); });
+  ev.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]);   // 同一天先算買進再釋放（當天出場的錢當天不能再用）
+  let now = 0, peak = 0; ev.forEach(e => { now += e[2]; peak = Math.max(peak, now); });
+  const total = sum(rs);
   return {n: rs.length, done: done.length, open: open.length, win: done.length ? done.filter(r => r["報酬%"] > 0).length / done.length * 100 : null,
-    avg: done.length ? done.reduce((s, r) => s + r["報酬%"], 0) / done.length : null, dsum: sum(done), osum: sum(open), sum: sum(rs),
-    cap: open.reduce((s, r) => s + r["買價"] * 1000, 0)};
+    avg: done.length ? done.reduce((s, r) => s + r["報酬%"], 0) / done.length : null, dsum: sum(done), osum: sum(open), sum: total,
+    cap: open.reduce((s, r) => s + r["買價"] * 1000, 0), peak, tret: peak ? total / peak * 100 : null};
 }
 function today(){
   const buy = th => MKT.osc === null ? "—" : (th === null || (th === 0 ? MKT.osc > 0 : MKT.osc >= th)) ? '<span class="yes">買</span>' : '<span class="nob">不買</span>';
@@ -226,16 +232,17 @@ function tomorrow(){
 }
 function summary(){
   ["fsl","fk"].forEach(id => $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === $(id)._get())));
-  if (!G.length) { $("sb").innerHTML = '<tr><td colspan="12" class="empty">還沒有任何交易紀錄（正式紀錄從開始日起每天晚上跑 paper_daily.bat 後產生）</td></tr>'; return; }
+  if (!G.length) { $("sb").innerHTML = '<tr><td colspan="14" class="empty">還沒有任何交易紀錄（正式紀錄從開始日起每天晚上跑 paper_daily.bat 後產生）</td></tr>'; return; }
   let h = "", hold = "";
   G.forEach((g, i) => {
     if ((FSL !== "全部" && g.sl !== FSL) || (FK !== "全部" && String(g.k) !== FK)) return;
-    if (g.hold !== hold) { hold = g.hold; h += `<tr class="grp"><td colspan="12">${hold}</td></tr>`; }
+    if (g.hold !== hold) { hold = g.hold; h += `<tr class="grp"><td colspan="14">${hold}</td></tr>`; }
     const t = stat(g.rows);
     h += `<tr data-i="${i}" class="${i === cur ? "on" : ""}"><td class="l">${g.cond}</td><td class="l">${g.sl}</td><td>${g.k}</td><td>${t.n}</td><td>${t.done}</td>
       <td>${t.win === null ? "—" : t.win.toFixed(0) + "%"}</td><td class="${sg(t.avg)}">${t.avg === null ? "—" : pct(t.avg)}</td>
       <td class="${sg(t.dsum)}">${money(t.dsum)}</td><td>${t.open}</td><td class="${sg(t.osum)}">${money(t.osum)}</td>
-      <td class="${sg(t.sum)}">${money(t.sum)}</td><td>${Math.round(t.cap).toLocaleString()}</td></tr>`;
+      <td class="${sg(t.sum)}">${money(t.sum)}</td><td class="${sg(t.tret)}"><b>${t.tret === null ? "—" : pct(t.tret)}</b></td>
+      <td>${Math.round(t.peak).toLocaleString()}</td><td>${Math.round(t.cap).toLocaleString()}</td></tr>`;
   });
   $("sb").innerHTML = h;
   hist();
@@ -292,7 +299,8 @@ function draw(){
   document.querySelectorAll("#hd th").forEach(th => th.querySelector(".ar").textContent = th.dataset.k === sortK ? (sortD > 0 ? "▲" : "▼") : "");
   const t = stat(rs);
   $("cards").innerHTML = [["交易筆數", t.n, ""], ["已出場平均", t.avg === null ? "—" : pct(t.avg), sg(t.avg)], ["勝率（已出場）", t.win === null ? "—" : t.win.toFixed(0) + "%", ""],
-    ["已實現損益", money(t.dsum), sg(t.dsum)], ["持有中（未實現）", t.open + " 筆　" + money(t.osum), sg(t.osum)], ["合計損益", money(t.sum), sg(t.sum)]]
+    ["已實現損益", money(t.dsum), sg(t.dsum)], ["持有中（未實現）", t.open + " 筆　" + money(t.osum), sg(t.osum)], ["合計損益", money(t.sum), sg(t.sum)], ["下方報酬% 加總", rs.length ? pct(rs.reduce((s, r) => s + (r["報酬%"] || 0), 0)) : "—", sg(rs.reduce((s, r) => s + (r["報酬%"] || 0), 0))],
+    ["總報酬（÷ 最高占用）", t.tret === null ? "—" : pct(t.tret), sg(t.tret)], ["最高占用資金", Math.round(t.peak).toLocaleString(), ""]]
     .map(([a, v, c]) => `<div class="card"><span>${a}</span><b class="${c}">${v}</b></div>`).join("");
   $("cnt").textContent = `顯示 ${rs.length} / ${rows().length} 筆`;
   $("bd").innerHTML = rs.length ? rs.map(r => "<tr>" + COLS.map(k => {
