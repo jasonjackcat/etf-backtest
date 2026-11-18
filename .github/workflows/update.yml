@@ -10,6 +10,8 @@ on:
     paths:
       - "template.html"
       - "build_site.py"
+      - "fundamentals.py"
+      - "swing_overview.html"
       - ".github/workflows/update.yml"
 
 permissions:
