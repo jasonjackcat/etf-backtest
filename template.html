@@ -230,7 +230,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
       <a href="#etf" class="tab" id="tabEtf">ETF</a>
       <a href="#stocks" class="tab" id="tabStocks">個股</a>
       <a href="#member" class="tab" id="tabMember" hidden>會員專區</a>
-      <a href="swing_overview.html" class="tab" id="tabSwing" target="_blank" rel="noopener" title="波段選股紙上模擬（另開新分頁）" hidden>選股總覽 ↗</a>
+      <a href="https://jasonjackcat.github.io/swing/" class="tab" id="tabSwing" target="_blank" rel="noopener" title="波段選股紙上模擬（另開新分頁）">選股總覽 ↗</a>
       <span class="acc" id="accBadge" aria-live="polite"><span>連線中…</span></span>
     </nav>
     <form class="login" id="loginBox" hidden autocomplete="on">
@@ -960,7 +960,6 @@ function route() {
   const view = h === '#stocks' ? 'stocks' : h === '#member' ? 'member' : 'etf';
   const ok = memberOk();
   $('tabMember').hidden = !ok && view !== 'member';
-  $('tabSwing').hidden = !ALL._remote;   // 選股總覽只在 GitHub 版有（swing_overview.html 跟網站一起發佈）
   $('vEtfHead').hidden = $('vEtfBody').hidden = view !== 'etf';
   $('vStockHead').hidden = $('vStockBody').hidden = view !== 'stocks';
   $('vMemberHead').hidden = $('vMemberBody').hidden = view !== 'member';
