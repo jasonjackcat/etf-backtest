@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.request
@@ -275,6 +276,13 @@ def main():
     with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as f:
         f.write(head + page + "\n</html>\n")
     open(os.path.join(OUT, ".nojekyll"), "w").close()
+    # 波段選股總覽（daytrade_lab 每晚產生，使用者手動上傳到 repo 根目錄）：有就一起發佈
+    sw = os.path.join(HERE, "swing_overview.html")
+    if os.path.exists(sw):
+        shutil.copyfile(sw, os.path.join(OUT, "swing_overview.html"))
+        print(f"選股總覽：swing_overview.html（{os.path.getsize(sw) / 1e6:.1f} MB）")
+    else:
+        print("選股總覽：repo 裡沒有 swing_overview.html，略過")
     total = sum(os.path.getsize(os.path.join(OUT, "data", x)) for x in os.listdir(os.path.join(OUT, "data")))
     print(f"完成：{len(groups)} 個資料檔，共 {total / 1e6:.1f} MB，資料至 {asof}")
     return 0
