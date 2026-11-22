@@ -442,7 +442,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   <h2>自選股（最多 10 檔）</h2>
   <div class="wgrid" id="sWGrid"></div>
   <div class="wact"><button type="button" class="btn" id="sSave">儲存清單</button><button type="button" class="linkbtn" id="sClear">全部清除</button><button type="button" class="linkbtn" id="sFetch" hidden>立即抓取</button><span class="hint" id="sWStatus"></span></div>
-  <p class="hint" id="sWHint">每個人的清單各自獨立。輸入台股代號（上市、上櫃都可以），空白的欄位不用填。網頁擁有者加入的股票會在每天 18:00 自動抓資料；其他人只能加入已經有資料的股票。</p>
+  <p class="hint" id="sWHint">每個人的清單各自獨立。輸入台股代號（上市、上櫃都可以），空白的欄位不用填。網頁擁有者加入的股票會在每天 23:00 自動抓資料；其他人只能加入已經有資料的股票。</p>
   <p class="hint" id="sAvail"></p>
   </div>
   <div class="sec">
@@ -1518,7 +1518,7 @@ async function sFetchMissing() {
   if (sFetching) return;
   const st = $('sWStatus'), todo = sWatch.filter(tk => !sHas(tk));
   if (!todo.length) return;
-  if (!sMcp) { st.dataset.msg = 1; st.textContent = `無法立即抓取（這個畫面沒有 Claude app 內建瀏覽器的權限）。${todo.join('、')} 會在下次 18:00 更新後出現；要立即抓取請在 Claude 桌面 app 打開網頁。`; return; }
+  if (!sMcp) { st.dataset.msg = 1; st.textContent = `無法立即抓取（這個畫面沒有 Claude app 內建瀏覽器的權限）。${todo.join('、')} 會在下次 23:00 更新後出現；要立即抓取請在 Claude 桌面 app 打開網頁。`; return; }
   sFetching = true; $('sFetch').hidden = true; st.dataset.msg = 1;
   const fail = [];
   for (const code of todo) {
@@ -1540,7 +1540,7 @@ async function sFetchMissing() {
     }
   }
   sFetching = false;
-  st.textContent = fail.length ? `沒抓到：${fail.join('、')}。這些會在下次 18:00 更新時再試。` : '已抓到最新資料。';
+  st.textContent = fail.length ? `沒抓到：${fail.join('、')}。這些會在下次 23:00 更新時再試。` : '已抓到最新資料。';
   if (!fail.length) setTimeout(() => { delete st.dataset.msg; sWatchUi(); }, 10000);
 }
 
@@ -1608,7 +1608,7 @@ async function sSaveWatch() {
     if (pend.length && ACC.isOwner && sMcp) { $('sSave').disabled = false; await sFetchMissing(); return; }
     const where = ACC.mode === 'db' ? '已儲存。' : '已儲存在這台裝置的瀏覽器。';
     st.textContent = !pend.length ? where
-      : ACC.mode === 'db' ? `${where}${pend.join('、')} 會在今天 18:00 自動更新後出現（18:00 以後加的要等隔天）。`
+      : ACC.mode === 'db' ? `${where}${pend.join('、')} 會在今天 23:00 自動更新後出現（23:00 以後加的要等隔天）。`
       : S_REMOTE ? where
       : `${where}${pend.join('、')} 目前沒有資料：每天只會抓網頁擁有者清單裡的股票，請擁有者加入這檔。`;
   } catch (e) {
