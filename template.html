@@ -149,6 +149,7 @@ input[type=number]{font-family:var(--f-num)}
 .wcell.named input{padding-right:min(calc(16px + var(--nw, 48px)), calc(100% - 64px))}
 .wname{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none;max-width:calc(100% - 74px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wgrid input.bad{border-color:var(--up)}
+.wpreset{display:flex;align-items:center;gap:8px;margin:0 0 10px}.wpreset label{white-space:nowrap;font-size:13px;color:var(--muted)}.wpreset select{width:auto;max-width:100%}
 .wact{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .btn{font:inherit;font-size:14px;font-weight:500;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
 .btn:disabled{opacity:.45;cursor:default}
@@ -440,6 +441,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 <form class="panel" id="sCfg" onsubmit="return false">
   <div class="sec" data-watch>
   <h2>自選股（最多 10 檔）</h2>
+  <div class="wpreset"><label for="sPreset">顯示清單</label><select id="sPreset"><option value="mine">我的自選</option></select></div>
   <div class="wgrid" id="sWGrid"></div>
   <div class="wact"><button type="button" class="btn" id="sSave">儲存清單</button><button type="button" class="linkbtn" id="sClear">全部清除</button><button type="button" class="linkbtn" id="sFetch" hidden>立即抓取</button><span class="hint" id="sWStatus"></span></div>
   <p class="hint" id="sWHint">每個人的清單各自獨立。輸入台股代號（上市、上櫃都可以），空白的欄位不用填。網頁擁有者加入的股票會在每天 23:00 自動抓資料；其他人只能加入已經有資料的股票。</p>
@@ -1103,6 +1105,28 @@ function sRun(tk, cfg) {
 // 個股分頁介面（需要 stock_engine.js 與 ETF 頁的共用函式 $、money、sMoney、pct、cls、css、nf）
 // 自選股：每個人的清單存在網頁資料庫 users/<自己的 id>（見最後的帳號程式）；沒登入時用預設清單
 const S_DEFAULT = ['2330'];
+// 族群清單：「顯示清單」選族群時只是切換顯示，不會改到自己存的自選股（切回「我的自選」就回來）；要加族群在這裡加一行
+const S_PRESETS = [
+  { id: 'fin', name: '金融', codes: ['2891', '2881', '2882', '2887', '2884', '2883', '2886', '2890', '2880', '5880'] },
+];
+// 選股總覽（daytrade_lab 每晚更新後上傳）的明天預估 10 天／20 天前 10 名，讀到就加到選單
+const SWING_PICKS = 'https://jasonjackcat.github.io/swing/picks.json';
+function sLoadSwingPicks() {
+  fetch(SWING_PICKS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !Array.isArray(j.lists)) return;
+    const d = String(j.date || '').slice(5).replace('-', '/');
+    j.lists.forEach(l => {
+      if (!l || !Array.isArray(l.codes) || !l.codes.length) return;
+      const id = `swing${l.hold}`;
+      if (S_PRESETS.some(x => x.id === id)) return;
+      S_PRESETS.push({ id, name: `${l.hold} 天波段選股`, label: `${l.hold} 天波段選股（${d} 名單）`,
+        note: `選股總覽 ${d} 的明天預估前 ${l.codes.length} 名`, codes: l.codes.slice(0, 10).map(String) });
+      $('sPreset').insertAdjacentHTML('beforeend', `<option value="${id}">${l.hold} 天波段選股（${d} 名單）</option>`);
+    });
+  }).catch(() => {});
+}
+let sView = 'mine', sMineSaved = null;
+const sMineCodes = () => sView === 'mine' ? sWatch : (sMineSaved || []);
 let sWatch = S_DEFAULT.slice();
 const sHas = tk => !!(ALL[tk] && ALL[tk].px && ALL[tk].px.length > 60);
 const sName = tk => (ALL[tk] && ALL[tk].name) || '';
@@ -1195,7 +1219,7 @@ function sScanRender() {
   $('sScanCount').textContent = `符合 ${out.length} 檔` + (pending.length ? `・勝率計算中 ${out.length - pending.length}/${out.length}` : '')
     + (noVol ? `・${noVol} 檔還沒有成交量資料` : '');
   tb.innerHTML = out.map(r => {
-    const inW = sWatch.includes(r.code);
+    const inW = sMineCodes().includes(r.code);
     const w = r.win;
     const wcell = !w ? '<span class="hint">計算中…</span>'
       : w.w == null ? `<span class="hint">—（0 次）</span>`
@@ -1226,8 +1250,9 @@ function sScanQueue(codes) {
 function sScanPick(btn, code) {
   document.querySelectorAll('#sScanT tr.pick').forEach(r => r.remove());
   const tr = btn.closest('tr');
-  const opts = (sWatch.length < 10 ? [`<option value="">加到空的欄位（第 ${sWatch.length + 1} 欄）</option>`] : [])
-    .concat(sWatch.map((c, i) => `<option value="${i}">取代第 ${i + 1} 欄：${c} ${sName(c) || ''}</option>`));
+  const mine = sMineCodes();
+  const opts = (mine.length < 10 ? [`<option value="">加到空的欄位（第 ${mine.length + 1} 欄）</option>`] : [])
+    .concat(mine.map((c, i) => `<option value="${i}">取代第 ${i + 1} 欄：${c} ${sName(c) || ''}</option>`));
   const row = document.createElement('tr');
   row.className = 'pick';
   row.innerHTML = `<td colspan="8"><div class="pickbox"><span>把 <b>${code}</b> 加入自選股：</span><select aria-label="加入的位置">${opts.join('')}</select><button type="button" class="btn" data-ok>確定</button><button type="button" class="linkbtn" data-cancel>取消</button></div></td>`;
@@ -1237,6 +1262,7 @@ function sScanPick(btn, code) {
   row.querySelector('select').focus();
 }
 async function sScanAdd(code, slot = -1) {
+  if (sView !== 'mine') sSetView('mine');            // 加入自選一律加到自己的清單
   const st = $('sWStatus');
   if (sWatch.includes(code)) return;
   if (slot < 0 && sWatch.length >= 10) { st.dataset.msg = 1; st.textContent = '自選股已經 10 檔，請選一檔取代。'; return; }
@@ -1557,8 +1583,23 @@ function sWNames() {
     lab.title = nm;
   });
 }
+function sSetView(id) {
+  const p = S_PRESETS.find(x => x.id === id);
+  const next = p ? id : 'mine';
+  $('sPreset').value = next;
+  if (next === sView) return;
+  if (sView === 'mine') sMineSaved = sWatch.slice();
+  sView = next;
+  $('sSave').hidden = !!p; $('sClear').hidden = !!p;
+  sApplyWatch(p ? p.codes : (sMineSaved || []));
+  sFillInputs();
+  const st = $('sWStatus');
+  if (p) { st.dataset.msg = 1; st.textContent = `正在看「${p.name}」${p.codes.length} 檔${p.note ? `（${p.note}）` : ''}；你的自選股沒有變動，切回「我的自選」就會回來。`; }
+  else { delete st.dataset.msg; sWatchUi(); }
+  sScanRender();
+}
 function sFillInputs() {
-  $('sWGrid').innerHTML = Array.from({ length: 10 }, (_, k) => `<div class="wcell"><input id="sW${k}" aria-label="自選股 ${k + 1}" placeholder="代號 ${k + 1}" maxlength="6" autocomplete="off" value="${sWatch[k] || ''}"><span class="wname" aria-hidden="true"></span></div>`).join('');
+  $('sWGrid').innerHTML = Array.from({ length: 10 }, (_, k) => `<div class="wcell"><input id="sW${k}" aria-label="自選股 ${k + 1}" placeholder="代號 ${k + 1}" maxlength="6" autocomplete="off" value="${sWatch[k] || ''}"${sView !== 'mine' ? ' readonly' : ''}><span class="wname" aria-hidden="true"></span></div>`).join('');
   sWNames();
   sWatchUi();
 }
@@ -1593,6 +1634,7 @@ function sReadInputs() {
   return { out, bad };
 }
 async function sSaveWatch() {
+  if (sView !== 'mine') return;
   const { out, bad } = sReadInputs(), st = $('sWStatus');
   st.dataset.msg = 1;
   if (bad.length) { st.textContent = `代號格式不對：${bad.join('、')}（4～6 碼數字或英文）`; return; }
@@ -1695,6 +1737,9 @@ function sInit() {
     const st = $('sWStatus'); st.dataset.msg = 1;
     st.textContent = '已清空 10 個欄位，按「儲存清單」後才會生效；不想清除的話重新整理網頁即可。';
   });
+  $('sPreset').insertAdjacentHTML('beforeend', S_PRESETS.map(p => `<option value="${p.id}">${p.name}（${p.codes.length} 檔）</option>`).join(''));
+  sLoadSwingPicks();
+  $('sPreset').addEventListener('change', e => sSetView(e.target.value));
   $('sFetch').addEventListener('click', sFetchMissing);
   $('sBar').addEventListener('click', e => { const b = e.target.closest('[data-tk]'); if (b) { sSetTicker(b.dataset.tk); sRender(); } });
   $('sCmp').addEventListener('click', e => { const b = e.target.closest('[data-tk]'); if (b) { sSetTicker(b.dataset.tk); sRender(); } });
@@ -1761,7 +1806,7 @@ function accBadge(note) {
 let accTimer = null, accLast = '';
 function accBody(extra) {
   const prev = ACC.data || {};
-  return { codes: sWatch.slice(0, 10), etf: accEtfPrefs(), stock: sInited ? accStkPrefs() : (prev.stock || null), smart: Array.isArray(ACC.smart) ? ACC.smart : (prev.smart || []), ...(extra || {}) };
+  return { codes: sMineCodes().slice(0, 10), etf: accEtfPrefs(), stock: sInited ? accStkPrefs() : (prev.stock || null), smart: Array.isArray(ACC.smart) ? ACC.smart : (prev.smart || []), ...(extra || {}) };
 }
 async function accWrite(extra) {
   if (ACC.state === 'loading') return false;
@@ -1819,7 +1864,7 @@ const accReady = (async () => {
 function accApplyLoaded() {
   ACC.smart = ACC.data && Array.isArray(ACC.data.smart) ? ACC.data.smart.slice(0, 50) : [];
   if (ACC.data) {
-    if (Array.isArray(ACC.data.codes)) sWatch = ACC.data.codes.map(String).slice(0, 10);
+    if (Array.isArray(ACC.data.codes)) { const c = ACC.data.codes.map(String).slice(0, 10); if (sView === 'mine') sWatch = c; else sMineSaved = c; }
     accApplyEtf(ACC.data.etf);
     if (sInited) { accApplyStk(ACC.data.stock); sApplyWatch(sWatch); sFillInputs(); }
     accLast = JSON.stringify(accBody());
