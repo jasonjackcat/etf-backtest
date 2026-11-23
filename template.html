@@ -149,7 +149,7 @@ input[type=number]{font-family:var(--f-num)}
 .wcell.named input{padding-right:min(calc(16px + var(--nw, 48px)), calc(100% - 64px))}
 .wname{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none;max-width:calc(100% - 74px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wgrid input.bad{border-color:var(--up)}
-.pxp{display:flex;gap:6px}.pxp>input{flex:1 1 auto}.pxp .pp{position:relative;flex:0 0 76px}.pxp>input{min-width:70px}.pxp .pp input{padding-right:24px}.pxp .pp i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;font-size:13px;color:var(--muted);pointer-events:none}.pxh{display:block;margin-top:4px;font-size:12px}
+.pxp{display:flex;gap:6px}.pxp>input{flex:1 1 auto}.pxp .pp{position:relative;flex:0 0 104px}.pxp>input{min-width:72px}.pxp .pp input{-moz-appearance:textfield}.pxp .pp input::-webkit-outer-spin-button,.pxp .pp input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}.pxp .pp input{padding-right:24px}.pxp .pp i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;font-size:13px;color:var(--muted);pointer-events:none}.pxh{display:block;margin-top:4px;font-size:12px}
 .wpreset{display:flex;align-items:center;gap:8px;margin:0 0 10px}.wpreset label{white-space:nowrap;font-size:13px;color:var(--muted)}.wpreset select{width:auto;max-width:100%}
 .wact{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .btn{font:inherit;font-size:14px;font-weight:500;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
@@ -597,7 +597,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
     <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。進場價請自己填（可以填價格，或在右邊填相對最新收盤的 %，例如 −2）；停利、停損價與到期日會依你在「個股」分頁設定的回測條件自動算好，價格和 % 都可以再改，會自動互相換算。</p>
     <p class="hint" id="monRule" style="margin:0 0 10px"></p>
-    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
       <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
       <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><div class="pxp"><input type="number" id="monEntry" step="0.01" min="0"><span class="pp"><input type="number" id="monEntryP" step="0.5" aria-label="進場價：相對最新收盤 %" placeholder="−2"><i>%</i></span></div><span class="hint pxh" id="monEntryH"></span></div>
       <div class="f"><label for="monTp">停利價（現價 ≥ 這個就賣）</label><div class="pxp"><input type="number" id="monTp" step="0.01" min="0"><span class="pp"><input type="number" id="monTpP" step="0.5" min="0" aria-label="停利：相對進場價 %" placeholder="+15"><i>%</i></span></div><span class="hint pxh">% 以進場價計算</span></div>
