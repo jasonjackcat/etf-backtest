@@ -149,6 +149,7 @@ input[type=number]{font-family:var(--f-num)}
 .wcell.named input{padding-right:min(calc(16px + var(--nw, 48px)), calc(100% - 64px))}
 .wname{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none;max-width:calc(100% - 74px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wgrid input.bad{border-color:var(--up)}
+.pxp{display:flex;gap:6px}.pxp>input{flex:1 1 auto}.pxp .pp{position:relative;flex:0 0 76px}.pxp>input{min-width:70px}.pxp .pp input{padding-right:24px}.pxp .pp i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;font-size:13px;color:var(--muted);pointer-events:none}.pxh{display:block;margin-top:4px;font-size:12px}
 .wpreset{display:flex;align-items:center;gap:8px;margin:0 0 10px}.wpreset label{white-space:nowrap;font-size:13px;color:var(--muted)}.wpreset select{width:auto;max-width:100%}
 .wact{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .btn{font:inherit;font-size:14px;font-weight:500;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
@@ -594,13 +595,13 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </div>
   <div class="card" id="mMon" hidden>
     <div class="head"><h3>設定監控：<span id="monName"></span></h3><span class="hint">觸價就由下單工具用市價直接成交</span></div>
-    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。進場價請自己填；停利、停損價與到期日會依你在「個股」分頁設定的回測條件自動算好，可以再改。</p>
+    <p class="cap">現價跌到「進場價」以下就市價買進；持有後漲到「停利價」以上或跌到「停損價」以下就市價賣出。監控期間每個交易日 09:00～13:20 盯盤（下單工具要開著）。進場價請自己填（可以填價格，或在右邊填相對最新收盤的 %，例如 −2）；停利、停損價與到期日會依你在「個股」分頁設定的回測條件自動算好，價格和 % 都可以再改，會自動互相換算。</p>
     <p class="hint" id="monRule" style="margin:0 0 10px"></p>
-    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
       <div class="f"><label for="monQty">張數</label><input type="number" id="monQty" value="1" min="1" max="10" step="1"></div>
-      <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><input type="number" id="monEntry" step="0.01" min="0"></div>
-      <div class="f"><label for="monTp">停利價（現價 ≥ 這個就賣）</label><input type="number" id="monTp" step="0.01" min="0"></div>
-      <div class="f"><label for="monSl">停損價（現價 ≤ 這個就賣）</label><input type="number" id="monSl" step="0.01" min="0"></div>
+      <div class="f"><label for="monEntry">進場價（現價 ≤ 這個就買）</label><div class="pxp"><input type="number" id="monEntry" step="0.01" min="0"><span class="pp"><input type="number" id="monEntryP" step="0.5" aria-label="進場價：相對最新收盤 %" placeholder="−2"><i>%</i></span></div><span class="hint pxh" id="monEntryH"></span></div>
+      <div class="f"><label for="monTp">停利價（現價 ≥ 這個就賣）</label><div class="pxp"><input type="number" id="monTp" step="0.01" min="0"><span class="pp"><input type="number" id="monTpP" step="0.5" min="0" aria-label="停利：相對進場價 %" placeholder="+15"><i>%</i></span></div><span class="hint pxh">% 以進場價計算</span></div>
+      <div class="f"><label for="monSl">停損價（現價 ≤ 這個就賣）</label><div class="pxp"><input type="number" id="monSl" step="0.01" min="0"><span class="pp"><input type="number" id="monSlP" step="0.5" aria-label="停損：相對進場價 %" placeholder="−10"><i>%</i></span></div><span class="hint pxh">% 以進場價計算</span></div>
       <div class="f"><label for="monUntil">監控到期日</label><input type="date" id="monUntil"></div>
       <div class="f"><label for="monExp">到期時還持有</label><select id="monExp"><option value="sell">到期日 13:15 市價賣出</option><option value="stop">只停止監控（股票留著）</option></select></div>
     </div>
@@ -2052,30 +2053,44 @@ function monAddTradeDays(n) {
   for (let k = 0; k < n;) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w !== 0 && w !== 6) k++; }
   return d.toISOString().slice(0, 10);
 }
-// 輸入進場價 → 依回測條件算停利、停損價（使用者自己改過的欄位就不再覆蓋）
-function monAuto() {
-  const e = +$('monEntry').value, c = monRuleCfg;
-  if (!c || !(e > 0)) return;
-  if (c.tp && !$('monTp').dataset.manual) $('monTp').value = monRound(e * (1 + c.tp / 100), monCode, true);
-  if (c.sl && !$('monSl').dataset.manual) $('monSl').value = monRound(e * (1 - c.sl / 100), monCode, false);
+// 價格和 % 兩邊都能填，互相換算：進場 % 相對最新收盤（負＝比收盤低）；停利 % 相對進場價（往上）；停損 % 相對進場價（往下，填 10 或 −10 都當 −10%）
+// 停利／停損最後填的是 % 就跟著進場價變動，最後填的是價格就固定價格、只更新 %
+const MON_P = { monEntry: 'monEntryP', monTp: 'monTpP', monSl: 'monSlP' };
+let monClose = null;
+const monBase = id => id === 'monEntry' ? monClose : +$('monEntry').value;
+function monFromPct(id) {
+  const b = monBase(id), raw = $(MON_P[id]).value;
+  if (!(b > 0) || raw === '') return;
+  const p = +raw, q = id === 'monTp' ? Math.abs(p) : id === 'monSl' ? -Math.abs(p) : p;
+  $(id).value = monRound(b * (1 + q / 100), monCode, id === 'monTp');
 }
-$('monEntry').addEventListener('input', monAuto);
-['monTp', 'monSl'].forEach(id => $(id).addEventListener('input', () => { $(id).dataset.manual = $(id).value ? '1' : ''; if (!$(id).value) monAuto(); }));
+function monToPct(id) {
+  const b = monBase(id), v = +$(id).value;
+  $(MON_P[id]).value = b > 0 && v > 0 ? +((v / b - 1) * 100).toFixed(2) : '';
+}
+function monChain() { ['monTp', 'monSl'].forEach(id => $(id).dataset.src === 'px' ? monToPct(id) : monFromPct(id)); }
+Object.entries(MON_P).forEach(([id, pid]) => {
+  $(id).addEventListener('input', () => { $(id).dataset.src = 'px'; monToPct(id); if (id === 'monEntry') monChain(); });
+  $(pid).addEventListener('input', () => { $(id).dataset.src = 'pct'; monFromPct(id); if (id === 'monEntry') monChain(); });
+  $(pid).addEventListener('change', () => { if ($(id).value) monToPct(id); });   // 離開欄位時把 % 改成取整後價格的實際 %
+});
 function monOpen(code) {
   const x = smartList().find(s => s.code === code); if (!x || !ordReady()) return;
   monCode = code;
   // 價格不預先填：進場、停利、停損都由使用者自己決定
   $('monName').textContent = `${code} ${x.name || ''}`;
   $('monQty').value = 1;
-  ['monEntry', 'monTp', 'monSl'].forEach(id => { $(id).value = ''; $(id).placeholder = '請自己填'; delete $(id).dataset.manual; });
+  Object.entries(MON_P).forEach(([id, pid]) => { $(id).value = ''; $(pid).value = ''; $(id).placeholder = '請自己填'; $(id).dataset.src = 'pct'; });
+  const L = smartLatest(code); monClose = L && L.c > 0 ? L.c : null;
+  $('monEntryH').textContent = monClose ? `% 以最新收盤 ${monClose.toFixed(2)} 計算` : '沒有最新收盤，請直接填價格';
   const c = sCfg(), ok = !c.missing.length;
   monRuleCfg = ok ? { tp: c.tp, sl: c.sl, days: c.maxDays } : null;
   if (monRuleCfg) {
-    if (c.tp) $('monTp').placeholder = `輸入進場價後自動算（+${c.tp}%）`;
-    if (c.sl) $('monSl').placeholder = `輸入進場價後自動算（−${c.sl}%）`;
+    if (c.tp) { $('monTpP').value = c.tp; $('monTp').placeholder = '填進場價後自動算'; }
+    if (c.sl) { $('monSlP').value = -c.sl; $('monSl').placeholder = '填進場價後自動算'; }
   }
   $('monRule').textContent = !ok ? '「個股」分頁的回測條件還沒設定完整，停利、停損價與到期日請自己填。'
-    : `依你的回測條件：${c.tp ? `停利 +${c.tp}%` : '沒設停利（請自己填）'}、${c.sl ? `停損 −${c.sl}%` : '沒設停損（請自己填）'}、${c.maxDays ? `最長持有 ${c.maxDays} 個交易日` : '沒設持有天數（預設 30 天）'}。停利、停損以進場價計算，價格依台股跳動單位取整。`;
+    : `依你的回測條件：${c.tp ? `停利 +${c.tp}%` : '沒設停利（請自己填）'}、${c.sl ? `停損 −${c.sl}%` : '沒設停損（請自己填）'}、${c.maxDays ? `最長持有 ${c.maxDays} 個交易日` : '沒設持有天數（預設 30 天）'}。停利、停損以進場價計算，價格依台股跳動單位取整；每個價格右邊的 % 也可以直接改。`;
   $('monUntil').value = ok && c.maxDays ? monAddTradeDays(c.maxDays) : new Date(Date.now() + 28800000 + 30 * 86400000).toISOString().slice(0, 10);
   $('monExp').value = 'sell'; $('monAck').checked = false; $('monMsg').textContent = '';
   $('mMon').hidden = false; $('mMon').scrollIntoView({ behavior: 'smooth', block: 'center' });
