@@ -11,6 +11,8 @@ on:
       - "template.html"
       - "build_site.py"
       - "fundamentals.py"
+      - "chips_flow.py"
+      - "flow_seed.json"
       - "swing_overview.html"
       - ".github/workflows/update.yml"
 
