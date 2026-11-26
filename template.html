@@ -141,6 +141,7 @@ input[type=number]{font-family:var(--f-num)}
 .fld:focus-within{border-color:var(--accent)}
 .cnt{margin-left:auto;font-size:13px;font-weight:500;color:var(--accent);background:var(--accent-soft);padding:5px 14px;border-radius:99px;white-space:nowrap}
 .cnt:empty{display:none}
+.sbar .fldate{width:auto;flex:0 0 auto;font:inherit;font-family:var(--f-num);font-size:14px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:4px 12px}
 @media (max-width:640px){.cnt{margin-left:0}}
 .wgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .wgrid input{font-family:var(--f-num);text-transform:uppercase}
@@ -231,6 +232,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <nav class="tabs" aria-label="分頁">
       <a href="#etf" class="tab" id="tabEtf">ETF</a>
       <a href="#stocks" class="tab" id="tabStocks">個股</a>
+      <a href="#flow" class="tab" id="tabFlow" hidden>法人對作</a>
       <a href="#member" class="tab" id="tabMember" hidden>會員專區</a>
       <a href="https://jasonjackcat.github.io/swing/" class="tab" id="tabSwing" target="_blank" rel="noopener" title="波段選股紙上模擬（另開新分頁）">選股總覽 ↗</a>
       <span class="acc" id="accBadge" aria-live="polite"><span>連線中…</span></span>
@@ -279,6 +281,20 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
           <div class="l">策略總損益（含股息）</div>
           <div class="v" id="sPnl">—</div>
           <div class="s" id="sPnlS"></div>
+        </div>
+      </div>
+    </div>
+    <div class="vhead" id="vFlowHead" hidden>
+      <div class="eyebrow"><span class="dot"></span><b>法人對作：外資買、投信賣</b><span id="flRange"></span></div>
+      <div class="hero">
+        <div>
+          <h1>外資大買、投信大賣</h1>
+          <div class="meta" id="flMeta">載入中…</div>
+        </div>
+        <div class="big">
+          <div class="l">最新一天名單</div>
+          <div class="v" id="flBig">—</div>
+          <div class="s" id="flBigS"></div>
         </div>
       </div>
     </div>
@@ -367,7 +383,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 
   <div class="card">
     <h3>各檔比較</h3>
-    <p class="cap">同一組條件套用到每一檔，各自從 2020 年初或上市日開始（不看左邊的開始日），到同一個結束日。</p>
+    <p class="cap">同一組條件套用到每一檔，期間用左邊的開始日到結束日；開始日之後才上市的，從上市第一天開始。</p>
     <div class="tw"><table id="tCmp"><thead><tr>
       <th class="l">標的</th><th class="l">起點</th><th>買進次數</th><th>賣出次數</th><th>累計投入</th><th>已領股息</th><th>期末總資產</th><th>總損益</th><th>報酬率</th><th>年化</th><th></th>
     </tr></thead><tbody></tbody></table></div>
@@ -576,6 +592,29 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <p>資料：yfinance 日線（不含息價格）與配息。股票股利（例如富邦金）在 yfinance 記成分割，已自動換算股數；明細表顯示當時實際價格與股數。</p>
   </div>
 </div>
+</div>
+</div>
+
+<div class="in body" id="vFlowBody" hidden>
+<div class="main">
+  <div class="card">
+    <div class="head"><h3>進出場條件</h3><span class="hint" id="flAsof"></span></div>
+    <p class="cap">條件已清空，等重新設計。目前名單列出每天<b>外資買超、投信賣超</b>的全部股票（不含 ETF；資料來自證交所、櫃買中心每天收盤後公布的三大法人買賣超，外資含外資自營商）。這只是資料整理，不是推薦。</p>
+  </div>
+
+  <div class="card">
+    <div class="head"><h3>每日名單</h3><span class="hint" id="flDayHint"></span></div>
+    <div class="sbar">
+      <button type="button" class="linkbtn" id="flPrev">◀ 前一天</button>
+      <input type="date" id="flDay" class="fldate" aria-label="日期">
+      <button type="button" class="linkbtn" id="flNext">後一天 ▶</button>
+      <button type="button" class="linkbtn" id="flLast">最新</button>
+      <span class="cnt" id="flCnt"></span>
+    </div>
+    <div class="tw tscroll"><table id="flDayT"><thead><tr>
+      <th class="l">股票</th><th class="l">市場</th><th>外資買超(張)</th><th>投信賣超(張)</th><th title="外資買超佔當天成交量">外資／成交量</th><th>成交量(張)</th><th>收盤</th><th>當天漲跌</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
 </div>
 </div>
 
@@ -814,19 +853,26 @@ function setTicker(tk, keepDates) {
   if (!keepDates || $('start').value < L.first) $('start').value = L.first;
   if (!$('end').value || $('end').value > lastD) $('end').value = lastD;
   $('dataRange').textContent = `資料至 ${lastD}`;
-  $('tkHint').textContent = (L.first > '2020-01-02' ? `${tk} 在 2020 年後才上市，從第一個交易日 ${L.first} 開始。` : `從 2020 年第一個交易日 ${L.first} 開始。`)
+  $('tkHint').textContent = tkHintText(tk, L, $('start').value);
+  setTickerCaps(tk, L);
+}
+function tkHintText(tk, L, start) {   // 標題下的說明：跟著左邊的開始日
+  const from = start && start > L.first ? start : L.first;
+  return (from === L.first ? (L.first > '2020-01-02' ? `${tk} 在 2020 年後才上市，從第一個交易日 ${L.first} 開始。` : `從 2020 年第一個交易日 ${L.first} 開始。`) : `從 ${from} 開始（左邊設定的開始日）。`)
     + L.splits.map(x => ` ${tk} 在 ${x[0]} 以 1 拆 ${x[1]}，已自動換算。`).join('') + (tk === '00685L' ? ' 這是 2 倍槓桿 ETF，不配息，波動約是大盤兩倍。' : '');
+}
+function setTickerCaps(tk, L) {
   $('pxCap').textContent = `${tk} 收盤價（不含息），標出每次買進、加碼、賣出。` + (L.splits.length ? `分拆前的價格已除以 ${L.splits[0][1]}，和分拆後連在一起看；實際成交價看下面明細。` : '');
 }
 
 function drawCompare(cfg) {
   const cur = cfg.tk, rows = [], chipIrr = {};
   for (const tk of Object.keys(NAMES)) {
-    const L = useTicker(tk), r = run({ ...cfg, start: L.first });
+    const L = useTicker(tk), r = run({ ...cfg, start: cfg.start > L.first ? cfg.start : L.first });
     if (!r) continue;
     chipIrr[tk] = r.irr;
     const nb = r.ev.filter(x => x.type === 'init' || x.type === 'add').length, ns = r.ev.filter(x => x.type === 'sell').length;
-    rows.push(`<tr class="${tk === cur ? 'cur' : ''}"><td class="l"><b>${tk}</b> ${NAMES[tk]}</td><td class="l n">${L.first}</td><td class="n">${nb}</td><td class="n">${ns}</td><td class="n">${money(r.contributed)}</td><td class="n">${money(r.divT)}</td><td class="n">${money(r.total)}</td><td class="n ${cls(r.pnl)}">${sMoney(r.pnl)}</td><td class="n ${cls(r.pnl)}">${pct(r.pnl / r.contributed)}</td><td class="n ${cls(r.irr)}">${pct(r.irr)}</td><td>${tk === cur ? '' : `<button type="button" class="linkbtn" data-tk="${tk}">查看</button>`}</td></tr>`);
+    rows.push(`<tr class="${tk === cur ? 'cur' : ''}"><td class="l"><b>${tk}</b> ${NAMES[tk]}</td><td class="l n">${r.ser[0].d}</td><td class="n">${nb}</td><td class="n">${ns}</td><td class="n">${money(r.contributed)}</td><td class="n">${money(r.divT)}</td><td class="n">${money(r.total)}</td><td class="n ${cls(r.pnl)}">${sMoney(r.pnl)}</td><td class="n ${cls(r.pnl)}">${pct(r.pnl / r.contributed)}</td><td class="n ${cls(r.irr)}">${pct(r.irr)}</td><td>${tk === cur ? '' : `<button type="button" class="linkbtn" data-tk="${tk}">查看</button>`}</td></tr>`);
   }
   useTicker(cur);
   $('tCmp').tBodies[0].innerHTML = rows.join('');
@@ -836,6 +882,7 @@ function drawCompare(cfg) {
 function render() {
   const cfg = readCfg(); hints(cfg);
   drawCompare(cfg);
+  $('tkHint').textContent = tkHintText(cfg.tk, useTicker(cfg.tk), cfg.start);
   R = run(cfg); if (!R) return;
   const days = R.ser.length;
   $('kPnl').textContent = sMoney(R.pnl); $('kPnl').className = 'v ' + cls(R.pnl);
@@ -960,22 +1007,24 @@ function memberOk() {
 }
 function route() {
   const h = location.hash;
-  const view = h === '#stocks' ? 'stocks' : h === '#member' ? 'member' : 'etf';
+  const view = h === '#stocks' ? 'stocks' : h === '#member' ? 'member' : h === '#flow' ? 'flow' : 'etf';
   const ok = memberOk();
   $('tabMember').hidden = !ok && view !== 'member';
   $('vEtfHead').hidden = $('vEtfBody').hidden = view !== 'etf';
   $('vStockHead').hidden = $('vStockBody').hidden = view !== 'stocks';
   $('vMemberHead').hidden = $('vMemberBody').hidden = view !== 'member';
+  $('vFlowHead').hidden = $('vFlowBody').hidden = view !== 'flow';
   $('mSmart').hidden = !ok; $('mLock').hidden = ok; $('mOrders').hidden = !ok || !ALL._remote;
   if (!ok || !ALL._remote) $('mMon').hidden = true;
   $('mPnl').hidden = !ok || !ALL._remote;
   $('mNotice').hidden = !ok;
   if (view === 'member' && ok && typeof smartRender === 'function') { smartRender(); if (typeof sLoadScan === 'function') sLoadScan().then(smartRender); }
   $('mMeta').textContent = ok ? '這一頁只有登入的人看得到。' : '登入後才看得到這一頁。';
-  [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabMember', 'member']].forEach(([id, v]) => {
+  [['tabEtf', 'etf'], ['tabStocks', 'stocks'], ['tabFlow', 'flow'], ['tabMember', 'member']].forEach(([id, v]) => {
     const el = $(id); if (v === view) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
   });
   if (view === 'etf' && cPx) { cPx.resize(); cEq && cEq.resize(); }
+  if (view === 'flow' && typeof flInit === 'function') flInit();
   if (view === 'stocks' && typeof sInit === 'function') { sInit(); [sPxC, sVolC, sOscC, sEqC].forEach(c => c && c.resize()); }
 }
 window.addEventListener('hashchange', route);
@@ -2498,6 +2547,114 @@ $('sDetailBtn').addEventListener('click', () => sdOpen(sTk));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('sdDlg').hidden) sdClose(); });
 
 if (location.hash === '#stocks') route();
+</script>
+<script>
+// 法人對作：回測架構（資料：data/flow.json，由 chips_flow.py 每天產生）
+// 進出場條件已清空，等重新設計；設計好的規則接在 flEntry（進場）和 flExit（出場）。
+//
+// flow.json：
+//   days[k]  第 k 個交易日
+//   ev[k]    那天外資買超、投信賣超的股票，每列 r＝[代號, 外資買超張, 投信買賣超張(負), 成交量張, 收盤, 當天漲跌%,
+//            隔天開盤買、持有 1/3/5/10/20 天收盤賣的報酬%（含配息、已調整分割、未扣成本；還沒到期是 null）]；那天沒有資料是 null
+//   rv[k]    那天外資賣超、投信買超的代號
+const FL = { j: null, p: null, k: null, sig: null, init: false, rvSet: null };
+function flLoad() {
+  if (!FL.p) FL.p = fetch('data/flow.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null).then(j => (FL.j = j));
+  return FL.p;
+}
+
+// ── 進場條件（待設計）：回傳 true 就列入那天的名單 ──
+//   r＝當天這一列；s＝這檔目前的連續狀態 { n: 連續天數, f: 外資累計買超, t: 投信累計賣超, k0: 連續開始的交易日, g: 連續期間漲跌倍數 }；k＝第幾個交易日
+function flEntry(r, s, k) { return true; }
+// ── 出場條件（待設計）：回傳 { ret: 報酬%, exitDay } 或 null（還沒出場）；目前沒有出場規則 ──
+function flExit(x, k) { return null; }
+
+// 連續狀態：同一檔前一個交易日也在 ev 裡就接續（中間有沒資料的日子就重新算）
+function flSignals() {
+  const j = FL.j, out = new Array(j.days.length);
+  if (!FL.rvSet) FL.rvSet = (j.rv || []).map(a => a ? new Set(a) : null);
+  let st = {};
+  j.ev.forEach((rows, k) => {
+    if (!rows) { st = {}; out[k] = null; return; }
+    const ns = {}, sig = [];
+    for (const r of rows) {
+      const g = 1 + (r[5] || 0) / 100, p = st[r[0]];
+      const s = p ? { n: p.n + 1, f: p.f + r[1], t: p.t - r[2], k0: p.k0, g: p.g * g } : { n: 1, f: r[1], t: -r[2], k0: k, g };
+      ns[r[0]] = s;
+      if (flEntry(r, s, k)) sig.push({ r, ...s });
+    }
+    st = ns; out[k] = sig;
+  });
+  return out;
+}
+// 某檔在第 k0 個交易日之前 m 天裡，外資賣、投信買的天數（給反轉類條件用）
+function flRevCount(code, k0, m) {
+  const rs = FL.rvSet; let n = 0;
+  if (!rs) return 0;
+  for (let i = Math.max(0, k0 - m); i < k0; i++) if (rs[i] && rs[i].has(code)) n++;
+  return n;
+}
+// 統計：一串報酬% → 筆數、勝率、平均、中位數、最好、最差（之後接出場規則用）
+function flStats(a) {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y), n = s.length;
+  return { n, win: s.filter(x => x > 0).length / n, avg: s.reduce((x, y) => x + y, 0) / n,
+    med: n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2, best: s[n - 1], worst: s[0] };
+}
+
+const flPc = v => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+const flTd = v => `<td class="n ${v == null ? '' : cls(v)}">${flPc(v)}</td>`;
+const flNum = v => v == null ? '—' : Math.round(v).toLocaleString('zh-TW');
+function flName(code) { const x = S_INDEX && S_INDEX[code]; return x ? x : ['', '']; }
+function flLastK() { const ev = FL.j.ev; for (let k = ev.length - 1; k >= 0; k--) if (ev[k]) return k; return null; }
+function flPickDay(day) {   // 選的日期不是交易日或沒有資料：往前找最近的一天
+  const j = FL.j; let k = null;
+  for (let i = 0; i < j.days.length && j.days[i] <= day; i++) if (j.ev[i]) k = i;
+  if (k == null) for (let i = 0; i < j.days.length; i++) if (j.ev[i]) { k = i; break; }
+  return k;
+}
+function flStep(d) {
+  const ev = FL.j.ev; let k = FL.k;
+  do k += d; while (k >= 0 && k < ev.length && !ev[k]);
+  if (k >= 0 && k < ev.length) { FL.k = k; flRenderDay(); }
+}
+
+function flRender() {
+  const j = FL.j;
+  if (!j || !j.days || !j.days.length) { $('flMeta').textContent = '還沒有法人對作資料（網站下次更新後才會有）。'; return; }
+  FL.sig = flSignals();
+  const have = j.ev.filter(Boolean).length, lastK = flLastK();
+  $('flRange').textContent = `　${j.days[0]} ～ ${j.asof}`;
+  $('flMeta').textContent = `進出場條件待重新設計；目前列出外資買超、投信賣超的全部股票；資料 ${have} 個交易日`;
+  $('flAsof').textContent = `資料至 ${j.asof}`;
+  $('flBig').textContent = `${lastK == null ? 0 : FL.sig[lastK].length} 檔`;
+  $('flBigS').textContent = `${j.asof} 收盤後`;
+  if (FL.k == null || !j.ev[FL.k]) FL.k = lastK;
+  $('flDay').min = j.days[0]; $('flDay').max = j.asof;
+  flRenderDay();
+}
+function flRenderDay() {
+  const j = FL.j, k = FL.k, day = j.days[k];
+  const sig = [...(FL.sig[k] || [])].sort((a, b) => b.r[1] - a.r[1]);
+  $('flDay').value = day;
+  $('flCnt').textContent = `${sig.length} 檔`;
+  $('flDayHint').textContent = `${day} 收盤後`;
+  $('flDayT').tBodies[0].innerHTML = sig.length ? sig.map(x => {
+    const r = x.r, [nm, mkt] = flName(r[0]);
+    const fv = r[3] ? (r[1] / r[3] * 100).toFixed(1) + '%' : '—';
+    return `<tr><td class="l"><button type="button" class="sdlink" data-detail="${r[0]}"><b>${r[0]}</b> ${nm}</button></td><td class="l">${mkt}</td><td class="n up">${flNum(r[1])}</td><td class="n down">${flNum(-r[2])}</td><td class="n">${fv}</td><td class="n">${flNum(r[3])}</td><td class="n">${r[4] == null ? '—' : r[4]}</td>${flTd(r[5])}</tr>`;
+  }).join('') : '<tr><td class="l" colspan="8"><span class="hint">這一天沒有資料。</span></td></tr>';
+}
+function flInit() {
+  if (FL.init) return;
+  FL.init = true;
+  $('flPrev').addEventListener('click', () => flStep(-1));
+  $('flNext').addEventListener('click', () => flStep(1));
+  $('flLast').addEventListener('click', () => { FL.k = flLastK(); flRenderDay(); });
+  $('flDay').addEventListener('change', () => { if (!$('flDay').value) return; FL.k = flPickDay($('flDay').value); flRenderDay(); });
+  Promise.all([flLoad(), typeof sLoadIndex === 'function' ? sLoadIndex() : null]).then(flRender);
+}
+if (location.hash === '#flow') route();
 </script>
 
 

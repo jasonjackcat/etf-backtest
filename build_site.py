@@ -6,7 +6,7 @@
   index.html            回測網頁（內含 7 檔 ETF 的資料，個股資料需要時才下載）
   data/index.json       代號清單 {代號: [名稱, 市場]}
   data/<前 3 碼>.json    該組股票的日 K、配息、分割／配股
-在 GitHub Actions 每個交易日 18:00 執行（見 .github/workflows/update.yml），
+在 GitHub Actions 每個交易日 23:00 執行（見 .github/workflows/update.yml），
 也可以在本機執行：python build_site.py   （測試時可設環境變數 LIMIT=50 只抓前 50 檔）
 """
 import datetime as dt
@@ -261,6 +261,13 @@ def main():
             fund = fundamentals.build(OUT, days, sorted(data), dt.datetime.now(TZ).date().isoformat()) or {}
         except Exception as e:
             print(f"籌碼／基本面資料失敗（網站其他部分照常）：{e}")
+    # 法人對作分頁：外資買超、投信賣超的每日名單與之後的報酬（失敗不影響網站其他部分；SKIP_FLOW=1 可略過）
+    if os.environ.get("SKIP_FLOW") != "1":
+        try:
+            import chips_flow
+            fund["flow"] = chips_flow.build(OUT, data, HERE, [r[0] for r in data[ETFS[0]]["px"]])
+        except Exception as e:
+            print(f"法人對作資料失敗（網站其他部分照常）：{e}")
 
     asof = max(d["px"][-1][0] for d in data.values())
     embed = {e: {k: v for k, v in data[e].items() if k != "vol15"} for e in ETFS}
