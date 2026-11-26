@@ -337,6 +337,7 @@ tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <select id="addRule">
       <option value="high">從近 N 日高點回落 X%</option>
       <option value="last">比上一次買價再跌 X%</option>
+      <option value="peak">從高點每跌 X%（創新高後重算）</option>
       <option value="osc">OSC 由正轉負</option>
     </select></div>
   <div class="row2">
@@ -728,6 +729,7 @@ function run(cfg) {
   const fee = a => Math.max(minFee, Math.floor(a * FEE));
   let shares = 0, pool = 0, divCash = 0, contributed = 0, basis = 0, lastBuy = null, adds = 0;
   let feeT = 0, taxT = 0, divT = 0, armed = true, everIn = false, prevSh = 0, pending = null;
+  let peak = null, lvl = 0;     // 「從高點每跌 X%」：持有以來的最高收盤、已經加碼到第幾層
   const ev = [], ser = [], flows = [], trips = [];
 
   function buy(kind, price, d, i) {
@@ -750,7 +752,7 @@ function run(cfg) {
     pool += net; feeT += f; taxT += t;
     trips.push({ ret: net / basis - 1, pnl: net - basis });
     ev.push({ d, i, type: 'sell', price, n: shares, amt: net, fee: f + t, contributed, shares: 0, avg: null, pnl: pool + divCash - contributed, tripRet: net / basis - 1 });
-    shares = 0; basis = 0; lastBuy = null; adds = 0;
+    shares = 0; basis = 0; lastBuy = null; adds = 0; peak = null; lvl = 0;
   }
   function decide(i) {
     const p = PX[i], prev = PX[i - 1];
@@ -761,8 +763,14 @@ function run(cfg) {
     }
     if (cfg.exitRule === 'tp' && shares * p.c / basis - 1 >= cfg.tp / 100) return 'sell';
     if (cfg.exitRule === 'osc' && crossDn) return 'sell';
-    if (cfg.maxAdd > 0 && adds >= cfg.maxAdd) return null;
     const x = cfg.drop / 100;
+    if (peak == null || p.c > peak) { peak = p.c; lvl = 0; }     // 高點每天都更新（達到加碼上限也要記）
+    if (cfg.maxAdd > 0 && adds >= cfg.maxAdd) return null;
+    if (cfg.addRule === 'peak') {
+      if (p.c > peak * (1 - x * (lvl + 1))) return null;
+      lvl = Math.floor((1 - p.c / peak) / x + 1e-9);             // 一天跌很多只買一次，但跳到對應的層級
+      return 'add';
+    }
     if (cfg.addRule === 'last') return p.c <= lastBuy * (1 - x) ? 'add' : null;
     if (cfg.addRule === 'high') {
       let hi = -Infinity; for (let j = Math.max(0, i - cfg.nday + 1); j <= i; j++) hi = Math.max(hi, PX[j].c);
@@ -796,7 +804,7 @@ function run(cfg) {
   }
   const last = PX[e], total = shares * last.c + pool + divCash;
   return { s, e, ev, ser, trips, shares, pool: pool + divCash, contributed, basis, total, pnl: total - contributed, feeT, taxT, divT,
-           irr: xirr(flows.concat([[last.d, total]])), last };
+           irr: xirr(flows.concat([[last.d, total]])), last, lastBuy, peak, lvl };
 }
 
 function xirr(fl) {
@@ -832,7 +840,8 @@ function hints(cfg) {
   $('fDrop').hidden = cfg.addRule === 'osc';
   $('fTp').hidden = cfg.exitRule !== 'tp';
   $('conflict').hidden = !(cfg.addRule === 'osc' && cfg.exitRule === 'osc');
-  $('addHint').textContent = cfg.addRule === 'last' ? `收盤價比上一次買進價低 ${cfg.drop}% 以上時，加碼 ${money(cfg.add)} 元。`
+  $('addHint').textContent = cfg.addRule === 'last' ? `收盤價比上一次買進價低 ${cfg.drop}% 以上時，加碼 ${money(cfg.add)} 元（基準是上一次的買價，不是高點；股價漲上去之後要跌回上一次買價以下才會加碼）。`
+    : cfg.addRule === 'peak' ? `收盤價比持有以來最高收盤每多跌 ${cfg.drop}%（−${cfg.drop}%、−${cfg.drop * 2}%…）就加碼 ${money(cfg.add)} 元；創新高後從新高重新算。`
     : cfg.addRule === 'high' ? `收盤價比近 ${cfg.nday} 日最高收盤低 ${cfg.drop}% 以上時加碼一次；要再創 ${cfg.nday} 日新高後才會再觸發。`
     : `OSC 前一日 ≥ 0、當日 < 0 時，加碼 ${money(cfg.add)} 元。`;
   $('exitHint').textContent = cfg.exitRule === 'none' ? '只買不賣，股息照領。'
@@ -884,6 +893,13 @@ function render() {
   drawCompare(cfg);
   $('tkHint').textContent = tkHintText(cfg.tk, useTicker(cfg.tk), cfg.start);
   R = run(cfg); if (!R) return;
+  if (R.shares && (cfg.addRule === 'last' || cfg.addRule === 'peak')) {     // 目前離下一次加碼還差多少
+    const f = R.last.f, x = cfg.drop / 100, now = R.last.c * f;
+    const ref = cfg.addRule === 'last' ? R.lastBuy : R.peak, trig = cfg.addRule === 'last' ? ref * (1 - x) : ref * (1 - x * (R.lvl + 1));
+    const full = cfg.maxAdd > 0 && R.ev.filter(v => v.type === 'add').length >= cfg.maxAdd;
+    $('addHint').textContent += full ? ` 已達加碼次數上限。`
+      : ` 目前${cfg.addRule === 'last' ? '上一次買價' : '持有以來最高收盤'} ${(ref * f).toFixed(2)}，收盤跌到 ${(trig * f).toFixed(2)} 以下才會加碼（最新收盤 ${now.toFixed(2)}，還要再跌 ${Math.max(0, (1 - trig * f / now) * 100).toFixed(1)}%）。`;
+  }
   const days = R.ser.length;
   $('kPnl').textContent = sMoney(R.pnl); $('kPnl').className = 'v ' + cls(R.pnl);
   $('kPnlS').textContent = '報酬率 ' + pct(R.pnl / R.contributed);
